@@ -7,21 +7,44 @@ Created on Fri Oct 17 12:35:32 2025
 Script containing functions for simulation of stable membrane curvatures -- to be used for initialising membrane MD simulation
 """
 # # # Imports # # #
-
+# For simulatution
 import numpy as np
+import copy
+# For visualisation
 import matplotlib.pylot as plt
+import matplotlib.animation as animation
 
 
 
 # # # Information storing classes # # #
 
-class variables:
+class params:
     '''
-    Store variables used in simulation
+    Set parameters used in simulation
     '''
-    kbT  = 1  
-    l_x  = 10 # box size, x-direction
-    l_y  = 10 # box size, y-direction
+    # Size of thermal fluctuations, base unit of simulation
+    kbT = 1  
+    
+    # Box size
+    l_x = 10        # box size, x-direction
+    l_y = 10        # box size, y-direction
+    
+    # Fourier expansion
+    exp_order = 3   # order of 2D Fourier expansion
+    
+    # Bending energies
+    H_0     = 0.0   # Optimum mean curvature
+    kappa_H = 1.0   # Bending modulus of mean curvature (kbT units)
+    kappa_  = 1.0   # Bending modulus of Gaussian curvature (kbT units)
+    
+    # Size of Monte Carlo moves
+    delta = 0.01    # Mean size of perturbation applied to Fourier coefficients
+    
+    # X, Y grid for calculations
+    npts = 100
+    x = np.linspace(0, l_x, npts)
+    y = np.linspace(0, l_y, npts)
+    X, Y = np.meshgrid(x, y)
 
 
 class Model_membrane:
@@ -30,10 +53,10 @@ class Model_membrane:
     ''' 
     def __init__(self):
         
-        self.alpha = np.array([ [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0] ])
-        self.beta  = np.array([ [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0] ])
-        self.gamma = np.array([ [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0] ])
-        self.zeta  = np.array([ [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0] ])
+        self.alpha = np.zeros((params.exp_order, params.exp_order))
+        self.beta  = np.zeros((params.exp_order, params.exp_order))
+        self.gamma = np.zeros((params.exp_order, params.exp_order))
+        self.zeta  = np.zeros((params.exp_order, params.exp_order))
         
        
         
@@ -51,72 +74,125 @@ def calc_height(membrane : Model_membrane, x : float, y : float):
     OUPUT
     height   : float, height at point (x,y)
     '''
-    exp_order = 3 # order of 2D Fourier expansion
     
-    sum1 = np.sum( membrane.alpha[n,m]*np.cos(2*np.pi*n*x/variables.l_x)*np.cos(2*np.pi*m*y/variables.l_y) for n in range(exp_order) for m in range(exp_order) )
-    sum2 = np.sum( membrane.beta[n,m] *np.cos(2*np.pi*n*x/variables.l_x)*np.sin(2*np.pi*m*y/variables.l_y) for n in range(exp_order) for m in range(exp_order) )
-    sum3 = np.sum( membrane.gamma[n,m]*np.sin(2*np.pi*n*x/variables.l_x)*np.cos(2*np.pi*m*y/variables.l_y) for n in range(exp_order) for m in range(exp_order) )
-    sum4 = np.sum( membrane.alpha[n,m]*np.sin(2*np.pi*n*x/variables.l_x)*np.sin(2*np.pi*m*y/variables.l_y) for n in range(exp_order) for m in range(exp_order) )
+    sum1 = np.sum( membrane.alpha[n,m]*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum2 = np.sum( membrane.beta[n,m] *np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum3 = np.sum( membrane.gamma[n,m]*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum4 = np.sum( membrane.alpha[n,m]*np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     
     height = sum1 + sum2 + sum3 + sum4
     
     return height
 
 
-def calc_h_x(membrane : Model_membrane, x : float):
+def calc_h_x(membrane : Model_membrane, x : float, y : float):
     '''
-    Calculate local first order partial differential of height by x
+    Calculate local first order partial differential Fourier expansion of height by x
     
     INPUT
     membrane : Model_membrane, holds Fourier coefficients
-    x        : float, x-position 
+    x        : float, x_position
+    y        : float, y-position 
+    
+    OUTPUT
+    h_x      : float, local partial derivative by x
     '''
-    return 0
+    sum1 = np.sum( -membrane.alpha[n,m]*(2*np.pi*n/params.l_x)*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum2 = np.sum( -membrane.beta[n,m] *(2*np.pi*n/params.l_x)*np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum3 = np.sum(  membrane.gamma[n,m]*(2*np.pi*n/params.l_x)*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum4 = np.sum(  membrane.delta[n,m]*(2*np.pi*n/params.l_x)*np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    
+    h_x = sum1 + sum2 + sum3 + sum4
+    
+    return h_x
 
 
-def calc_h_y(membrane : Model_membrane, y : float):
+def calc_h_y(membrane : Model_membrane, x : float, y : float):
     '''
-    Calculate local first order partial differential of height by y
+    Calculate local first order partial differential Fourier expansion of height by y
     
     INPUT
     membrane : Model_membrane, holds Fourier coefficients
-    y        : float, x-position 
+    x        : float, x_position
+    y        : float, y-position 
+    
+    OUTPUT
+    h_y      : float, local partial derivative by y
     '''
-    return 0
+    sum1 = np.sum( -membrane.alpha[n,m]*(2*np.pi*m/params.l_y)*np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum2 = np.sum(  membrane.beta[n,m] *(2*np.pi*m/params.l_y)*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum3 = np.sum( -membrane.gamma[n,m]*(2*np.pi*m/params.l_y)*np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum4 = np.sum(  membrane.delta[n,m]*(2*np.pi*m/params.l_y)*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    
+    h_y = sum1 + sum2 + sum3 + sum4
+    
+    return h_y
 
 
-def calc_h_xx(membrane : Model_membrane, x : float):
+def calc_h_xx(membrane : Model_membrane, x : float, y : float):
     '''
-    Calculate local second order partial differential of height by x
+    Calculate local second order partial differential Fourier expansion of height by x
     
     INPUT
     membrane : Model_membrane, holds Fourier coefficients
-    x        : float, x-position
+    x        : float, x_position
+    y        : float, y-position 
+    
+    OUTPUT
+    h_xx     : float, local second order partial derivative by x
     '''
-    return 0
+    sum1 = np.sum( -membrane.alpha[n,m]*(2*np.pi*n/params.l_x)**2*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum2 = np.sum( -membrane.beta[n,m] *(2*np.pi*n/params.l_x)**2*np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum3 = np.sum( -membrane.gamma[n,m]*(2*np.pi*n/params.l_x)**2*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum4 = np.sum( -membrane.delta[n,m]*(2*np.pi*n/params.l_x)**2*np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    
+    h_xx = sum1 + sum2 + sum3 + sum4
+    
+    return h_xx
+
+
+def calc_h_yy(membrane : Model_membrane, x : float, y : float):
+    '''
+    Calculate local second order partial differential Fourier expansion of height by y
+    
+    INPUT
+    membrane : Model_membrane, holds Fourier coefficients
+    x        : float, x_position
+    y        : float, y-position 
+    
+    OUTPUT
+    h_yy     : float, local second order partial derivative by y
+    '''
+    sum1 = np.sum( -membrane.alpha[n,m]*(2*np.pi*m/params.l_y)**2*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum2 = np.sum( -membrane.beta[n,m] *(2*np.pi*m/params.l_y)**2*np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum3 = np.sum( -membrane.gamma[n,m]*(2*np.pi*m/params.l_y)**2*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum4 = np.sum( -membrane.delta[n,m]*(2*np.pi*m/params.l_y)**2*np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    
+    h_yy = sum1 + sum2 + sum3 + sum4
+    
+    return h_yy
 
 
 def calc_h_xy(membrane : Model_membrane, x : float, y : float):
     '''
-    Calculate local second order partial differential of height by x, y
+    Calculate local second order partial differential Fourier expansion of height by x, y
     
     INPUT
     membrane : Model_membrane, holds Fourier coefficients
-    x        : float, x-position
-    y        : float, y-position
-    '''
-    return 0
-
-
-def calc_h_yy(membrane : Model_membrane, y : float):
-    '''
-    Calculate local second order partial differential of height by y 
+    x        : float, x_position
+    y        : float, y-position 
     
-    INPUT
-    membrane : Model_membrane, holds Fourier coefficients
-    y        : float, y-position
+    OUTPUT
+    h_xy     : float, local second order partial derivative by x
     '''
-    return 0
+    sum1 = np.sum(  membrane.alpha[n,m]*(2*np.pi*n/params.l_x)*(2*np.pi*m/params.l_y)*np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum2 = np.sum( -membrane.beta[n,m] *(2*np.pi*n/params.l_x)*(2*np.pi*m/params.l_y)*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum3 = np.sum( -membrane.gamma[n,m]*(2*np.pi*n/params.l_x)*(2*np.pi*m/params.l_y)*np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum4 = np.sum(  membrane.delta[n,m]*(2*np.pi*n/params.l_x)*(2*np.pi*m/params.l_y)*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    
+    h_xy = sum1 + sum2 + sum3 + sum4
+    
+    return h_xy
 
 
 def calc_shape_operator(membrane : Model_membrane, x : float, y : float):
@@ -206,71 +282,162 @@ def calc_Helfrich_energy(H : float, K_G : float):
     Calculate Helfrich bending energy of membrane
     Note: using bending potential energy, NOT lipid bilayer bending FREE energy
     
+    *** Check equation is correct
+    *** Find values for kappa_H, H_0, kappa_K
+    *** Energy be for whole surface -> acceptance ratio dependant on box size (esp. for high frequencies)
+        For small perturbations, can assume surface area = l_x * l_y (i.e. 2D area)
+    
     INPUT
-    H      : float, mean curvature
-    K_G    : float, Gaussian curvature
+    H          : float, mean curvature
+    K_G        : float, Gaussian curvature
     
     OUTPUT
-    energy : float, Helfrich bending energy
+    tot_energy : float, Helfrich bending energy over surface
     '''    
-    return 0
+    energy_per_l = 2*params.kappa_H * ( H - params.H_0 )**2 + params.kappa_K * K_G
+
+    tot_energy = energy_per_l * params.l_x * params.l_y
+    
+    return tot_energy
 
 
 
 # # # Functions for Markov Chain Monte Carlo # # #
 
-def montecarlomove():
+def montecarlomove(prev_membrane : Model_membrane):
     '''
     Make Markov Chain Monte Carlo (MCMC) move to Fourier coefficients describing surface
+    
+    INPUT
+    prev_membrane : Model_membrane, contains curvature Fourier coefficients from previous step
+    
+    OUTPUT
+    move_membrane : Model_membrane, new membrane with perturbed curvature Fourier coefficients
+    move_energy   : float, bending energy associated with move_membrane
     '''
-    pass
+    # Fourier coefficient perturbations
+    delta_alpha = np.random.normal(loc=0, scale=params.delta, size=params.exp_order)
+    delta_beta  = np.random.normal(loc=0, scale=params.delta, size=params.exp_order)
+    delta_gamma = np.random.normal(loc=0, scale=params.delta, size=params.exp_order)
+    delta_zeta  = np.random.normal(loc=0, scale=params.delta, size=params.exp_order)
 
-def montecarloeval():
+    # Apply to a model membrane copy
+    move_membrane = copy.deepcopy(prev_membrane)
+    move_membrane.alpha += delta_alpha
+    move_membrane.beta  += delta_beta
+    move_membrane.gamma += delta_gamma
+    move_membrane.zeta  += delta_zeta
+
+    # Calculate shape operator
+    S = calc_shape_operator(move_membrane, params.X, params.Y)
+    
+    # Calculate mean and Gaussian curvatures
+    H   = calc_H(S)
+    K_G = calc_K_G(S)
+    
+    # Calculate bending energy
+    move_energy = calc_Helfrich_energy(H, K_G)
+    
+    return move_membrane, move_energy
+    
+
+def montecarloeval(move_energy : float, prev_energy : float):
     '''
     Calculate MCMC move energy, evaluate move acceptance
+    
+    INPUT
+    move_energy : flpat, energy associated with proposed membrane curvature
+    prev_energy : float, energy associated with previous membrane curvature
+    
+    OUPUT
+    accept_move : bool, Monte Carlo step outcome
     '''
-    pass
+    boltzmann_factor = np.exp( -(move_energy - prev_energy) )
+    
+    # choose random number
+    rand_number = np.random.random()
+    
+    accept_move = boltzmann_factor < rand_number
+    
+    return accept_move
 
-def montecarlostep():
+
+def montecarlostep(membrane_lst : list, energy_lst : list):
     '''
-    Run MCMC step: propose move, evaluate, add to Markov chain
-    Note: only need to store (alpha, beta, gamma, zeta) values -- can construct all other values using
+    Run MCMC step: propose move, evaluate, update Markov chain
+    
+    INPUT
+    membrane_lst : list of Model_membrane, contains curvature Fourier coefficients from previous steps
+    energy_lst   : list of float, energy associated with previous membrane curvatures
+    
+    OUPUT
+    membrane_lst : list of Model_membrane, UPDATED ensemble of curvature Fourier coefficients
+    energy_st    : list of float, UPDATED ensemble of energies
     '''
-    pass
+    # Extract last state data
+    prev_membrane, prev_energy = membrane_lst[-1], energy_lst[-1]
+    
+    # Make Markov chain Monte Carlo move
+    move_membrane, move_energy = montecarlomove(prev_membrane)
+    
+    # Evaluate
+    accept_move = montecarloeval(move_energy, prev_energy)
+    
+    # Update Markov chain
+    membrane_lst += [move_membrane] if accept_move else [prev_membrane]
+    energy_lst   += [move_energy]   if accept_move else [prev_energy]
+
+    return membrane_lst, energy_lst
 
 
 
-# # # Functions for running simulation, replica exchange, annealing # # #
+# # # Code for visualisation / data analysis # # #
 
-# Simulation:
-#   Initialise model membrane, run Monte Carlo for <n> steps
-#   Every <n'> steps, save values for data analysis: energy, mean curvature, Gaussian curvature
-
-# Replica exchange:
-#   Access surfaces otherwise separated by potential barriers...
-#   Tune kbT factor up & down to alter acceptance ratio from equilibrium ensemble
-#   Run parallel simulation windows, can swap replicas between kbT environments
-
-# Annealing:
-#   Slowly return kbT factor to equilibrium
-#   If too quick, will form "glass" -- initially all moves "downhill" & become trapped in metastable state space
-
-
-
-# # # Data Analysis # # #
-
-# Plot bending energy vs Monte Carlo step
-# Plot mean curvature vs Monte Carlo step
-# Plot Gaussian curvature vs Monte Carlo step
-# ^ are these values expected? Are states stable &/ in equilibrium ensemble?
-
-# Take mean of height (from equilibrium sampled region)
-#   Is average membrane structure flat?
-
-# Take mean squared height
-#   How does membrane thickness compare to CWT?
-
-# Visualising membrane curvature
-# For every <n''> steps, use Fourier coefficients to...
-# Construct contour / heatmap plot -- x,y axis w/ z for membrane height
-# Save frames to movie
+def visualise(membrane_lst : list, nframes : int):
+    '''
+    Visualise membrane curvature ensemble using heatmap plots
+    
+    INPUT
+    membrane_lst : list of Model_membrane, contains curvature Fourier coefficients from previous steps
+    nframes      : int, frequency/ interval size of frames
+    
+    OUPUT
+    None
+    '''
+    # Dump for membrane height
+    Z_dump = []
+    
+    # X,Y grid
+    npts = 100
+    x = np.linspace(0, params.l_x, npts)
+    y = np.linspace(0, params.l_y, npts)
+    X, Y = np.meshgrid(x, y)
+    
+    # Calculate z-direction (heights) using membrane Fourier coefficients, every nframes
+    for membrane in membrane_lst[::nframes]:
+    
+        Z_dump += [calc_height(membrane, X, Y)]
+        
+    # Make contour plot movie
+    # Set up figure and axis
+    fig, ax = plt.subplots(figsize=(8, 6))
+    
+    # Initial contour plot
+    contour = ax.contourf(X, Y, Z_dump[0], levels=50, cmap='viridis')
+    cbar = fig.colorbar(contour, ax=ax)
+    cbar.set_label("Z value (scalar field)")
+    
+    # Function to update contour only (not clearing the axis)
+    def update(frame):
+        for coll in contour.collections:
+            coll.remove()
+        new_contour = ax.contourf(X, Y, Z_dump[frame], levels=50, cmap='viridis')
+        contour.collections[:] = new_contour.collections
+        ax.set_title(f"Frame {frame}")
+    
+    # Create animation
+    ani = animation.FuncAnimation(fig, update, frames=len(Z_dump), interval=100)
+    
+    # Save to video
+    #ani.save("contour_with_colorbar.mp4", writer='ffmpeg', dpi=200) # *** Cannot save animation!
+    plt.close()
