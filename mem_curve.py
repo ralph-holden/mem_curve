@@ -11,7 +11,7 @@ Script containing functions for simulation of stable membrane curvatures -- to b
 import numpy as np
 import copy
 # For visualisation
-import matplotlib.pylot as plt
+import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 
@@ -35,7 +35,7 @@ class params:
     # Bending energies
     H_0     = 0.0   # Optimum mean curvature
     kappa_H = 1.0   # Bending modulus of mean curvature (kbT units)
-    kappa_  = 1.0   # Bending modulus of Gaussian curvature (kbT units)
+    kappa_K = 1.0   # Bending modulus of Gaussian curvature (kbT units)
     
     # Size of Monte Carlo moves
     delta = 0.01    # Mean size of perturbation applied to Fourier coefficients
@@ -100,7 +100,7 @@ def calc_h_x(membrane : Model_membrane, x : float, y : float):
     sum1 = np.sum( -membrane.alpha[n,m]*(2*np.pi*n/params.l_x)*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     sum2 = np.sum( -membrane.beta[n,m] *(2*np.pi*n/params.l_x)*np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     sum3 = np.sum(  membrane.gamma[n,m]*(2*np.pi*n/params.l_x)*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
-    sum4 = np.sum(  membrane.delta[n,m]*(2*np.pi*n/params.l_x)*np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum4 = np.sum(  membrane.zeta[n,m]*(2*np.pi*n/params.l_x)*np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     
     h_x = sum1 + sum2 + sum3 + sum4
     
@@ -122,7 +122,7 @@ def calc_h_y(membrane : Model_membrane, x : float, y : float):
     sum1 = np.sum( -membrane.alpha[n,m]*(2*np.pi*m/params.l_y)*np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     sum2 = np.sum(  membrane.beta[n,m] *(2*np.pi*m/params.l_y)*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     sum3 = np.sum( -membrane.gamma[n,m]*(2*np.pi*m/params.l_y)*np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
-    sum4 = np.sum(  membrane.delta[n,m]*(2*np.pi*m/params.l_y)*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum4 = np.sum(  membrane.zeta[n,m]*(2*np.pi*m/params.l_y)*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     
     h_y = sum1 + sum2 + sum3 + sum4
     
@@ -144,7 +144,7 @@ def calc_h_xx(membrane : Model_membrane, x : float, y : float):
     sum1 = np.sum( -membrane.alpha[n,m]*(2*np.pi*n/params.l_x)**2*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     sum2 = np.sum( -membrane.beta[n,m] *(2*np.pi*n/params.l_x)**2*np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     sum3 = np.sum( -membrane.gamma[n,m]*(2*np.pi*n/params.l_x)**2*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
-    sum4 = np.sum( -membrane.delta[n,m]*(2*np.pi*n/params.l_x)**2*np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum4 = np.sum( -membrane.zeta[n,m]*(2*np.pi*n/params.l_x)**2*np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     
     h_xx = sum1 + sum2 + sum3 + sum4
     
@@ -166,7 +166,7 @@ def calc_h_yy(membrane : Model_membrane, x : float, y : float):
     sum1 = np.sum( -membrane.alpha[n,m]*(2*np.pi*m/params.l_y)**2*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     sum2 = np.sum( -membrane.beta[n,m] *(2*np.pi*m/params.l_y)**2*np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     sum3 = np.sum( -membrane.gamma[n,m]*(2*np.pi*m/params.l_y)**2*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
-    sum4 = np.sum( -membrane.delta[n,m]*(2*np.pi*m/params.l_y)**2*np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum4 = np.sum( -membrane.zeta[n,m]*(2*np.pi*m/params.l_y)**2*np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     
     h_yy = sum1 + sum2 + sum3 + sum4
     
@@ -188,7 +188,7 @@ def calc_h_xy(membrane : Model_membrane, x : float, y : float):
     sum1 = np.sum(  membrane.alpha[n,m]*(2*np.pi*n/params.l_x)*(2*np.pi*m/params.l_y)*np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     sum2 = np.sum( -membrane.beta[n,m] *(2*np.pi*n/params.l_x)*(2*np.pi*m/params.l_y)*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     sum3 = np.sum( -membrane.gamma[n,m]*(2*np.pi*n/params.l_x)*(2*np.pi*m/params.l_y)*np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
-    sum4 = np.sum(  membrane.delta[n,m]*(2*np.pi*n/params.l_x)*(2*np.pi*m/params.l_y)*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sum4 = np.sum(  membrane.zeta[n,m]*(2*np.pi*n/params.l_x)*(2*np.pi*m/params.l_y)*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     
     h_xy = sum1 + sum2 + sum3 + sum4
     
@@ -208,13 +208,13 @@ def calc_shape_operator(membrane : Model_membrane, x : float, y : float):
     S_xy     : 2D array, shape operator at point x,y
     '''
     # Calculate first order partial derivatives of height
-    h_x  = calc_h_x(membrane, x)
-    h_y  = calc_h_y(membrane, y)
+    h_x  = calc_h_x(membrane, x, y)
+    h_y  = calc_h_y(membrane, x, y)
     
     # Calculate second order partial derivatives of height
-    h_xx = calc_h_xx(membrane, x)
+    h_xx = calc_h_xx(membrane, x, y)
     h_xy = calc_h_xy(membrane, x, y)
-    h_yy = calc_h_yy(membrane, y)
+    h_yy = calc_h_yy(membrane, x, y)
     
     # Normalisation factor
     norm_factor = (1 + h_x**2 + h_y**2)**(-3/2)
@@ -224,7 +224,7 @@ def calc_shape_operator(membrane : Model_membrane, x : float, y : float):
     i1j0_term = (1+h_y**2)*h_xy - h_x*h_y*h_yy
     i1j1_term = (1+h_x**2)*h_yy - h_x*h_y*h_xy
     
-    S_xy = norm_factor * np.array( [i0j0_term, i0j1_term], [i1j0_term, i1j1_term] )
+    S_xy = norm_factor * np.array([ [i0j0_term, i0j1_term], [i1j0_term, i1j1_term] ])
     
     return S_xy
 
@@ -239,7 +239,7 @@ def calc_H(S_xy: np.ndarray):
     OUPUT
     H    : float, mean curvature
     '''
-    H = 0.5 * np.linalg.trace(S_xy)
+    H = 0.5 * np.trace(S_xy)
     
     return H
 
