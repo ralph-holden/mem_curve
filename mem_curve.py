@@ -247,6 +247,7 @@ def calc_H(S_xy: np.ndarray):
 def calc_K_G(S_xy: np.ndarray):
     '''
     Calculate Gaussian curvature, K_G at point (x,y)
+    When S_xy is over all of grid X,Y -- must make determinant peicewise
     
     INPUT
     S_xy : 2D array, shape operator at point x,y
@@ -254,7 +255,13 @@ def calc_K_G(S_xy: np.ndarray):
     OUPUT
     K_G  : float, Gaussian curvature
     '''
-    K_G = np.linalg.det(S_xy)
+    #K_G = np.linalg.det(S_xy)
+    a = S_xy[0, 0] 
+    b = S_xy[0, 1]
+    c = S_xy[1, 0]
+    d = S_xy[1, 1]
+    # Compute determinant: ad - bc
+    K_G = a * d - b * c 
     
     return K_G
 
@@ -296,7 +303,7 @@ def calc_Helfrich_energy(H : float, K_G : float):
     '''    
     energy_per_l = 2*params.kappa_H * ( H - params.H_0 )**2 + params.kappa_K * K_G
 
-    tot_energy = energy_per_l * params.l_x * params.l_y
+    tot_energy = np.sum(energy_per_l) # * params.l_x * params.l_y
     
     return tot_energy
 
@@ -373,6 +380,7 @@ def montecarlostep(membrane_lst : list, energy_lst : list):
     OUPUT
     membrane_lst : list of Model_membrane, UPDATED ensemble of curvature Fourier coefficients
     energy_st    : list of float, UPDATED ensemble of energies
+    accept_move  : bool, Monte Carlo step outcome
     '''
     # Extract last state data
     prev_membrane, prev_energy = membrane_lst[-1], energy_lst[-1]
@@ -387,7 +395,7 @@ def montecarlostep(membrane_lst : list, energy_lst : list):
     membrane_lst += [move_membrane] if accept_move else [prev_membrane]
     energy_lst   += [move_energy]   if accept_move else [prev_energy]
 
-    return membrane_lst, energy_lst
+    return membrane_lst, energy_lst, accept_move
 
 
 
@@ -404,40 +412,33 @@ def visualise(membrane_lst : list, nframes : int):
     OUPUT
     None
     '''
-    # Dump for membrane height
-    Z_dump = []
-    
     # X,Y grid
     npts = 100
     x = np.linspace(0, params.l_x, npts)
     y = np.linspace(0, params.l_y, npts)
     X, Y = np.meshgrid(x, y)
     
-    # Calculate z-direction (heights) using membrane Fourier coefficients, every nframes
-    for membrane in membrane_lst[::nframes]:
+    # Calculate z-direction (heights)
+    Z_dump = [calc_height(membrane, X, Y) for membrane in membrane_lst[::nframes]]
     
-        Z_dump += [calc_height(membrane, X, Y)]
-        
-    # Make contour plot movie
-    # Set up figure and axis
     fig, ax = plt.subplots(figsize=(8, 6))
-    
-    # Initial contour plot
     contour = ax.contourf(X, Y, Z_dump[0], levels=50, cmap='viridis')
     cbar = fig.colorbar(contour, ax=ax)
     cbar.set_label("Z value (scalar field)")
+    title = ax.set_title("Frame 0")
     
-    # Function to update contour only (not clearing the axis)
     def update(frame):
+        nonlocal contour
+        # Remove previous contour
         for coll in contour.collections:
             coll.remove()
-        new_contour = ax.contourf(X, Y, Z_dump[frame], levels=50, cmap='viridis')
-        contour.collections[:] = new_contour.collections
-        ax.set_title(f"Frame {frame}")
+        # Draw new contour
+        contour = ax.contourf(X, Y, Z_dump[frame], levels=50, cmap='viridis')
+        title.set_text(f"Frame {frame}")
+        return contour.collections + [title]
     
-    # Create animation
-    ani = animation.FuncAnimation(fig, update, frames=len(Z_dump), interval=100)
+    anim = animation.FuncAnimation(fig, update, frames=len(Z_dump), interval=100, blit=False)
+    anim.save("contour_animation.gif", writer=animation.PillowWriter(fps=10))
+    plt.show()
     
-    # Save to video
-    #ani.save("contour_with_colorbar.mp4", writer='ffmpeg', dpi=200) # *** Cannot save animation!
-    plt.close()
+    return anim
