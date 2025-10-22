@@ -250,12 +250,12 @@ def calc_principle_curvatures(H : float, K_G : float):
 def calc_Helfrich_energy(H : float, K_G : float):
     '''
     Calculate Helfrich bending energy of membrane
-    Note: using bending potential energy, NOT lipid bilayer bending FREE energy
-    
-    *** Check equation is correct
-    *** Find values for kappa_H, H_0, kappa_K
-    *** Energy be for whole surface -> acceptance ratio dependant on box size (esp. for high frequencies)
-        For small perturbations, can assume surface area = l_x * l_y (i.e. 2D area)
+    Note: using bending POTENTIAL energy, NOT lipid bilayer bending FREE energy
+
+    Using Riemann integral in 2D to calculate bending energy over whole surface
+    Assuming:
+        Surface area = l_x * l_y (i.e. 2D area) -- fair for small perturbations
+        Small interval size ("subgrid_area"), for accurate Riemann integration
     
     INPUT
     H          : float, mean curvature
@@ -428,4 +428,5 @@ def visualise(membrane_lst : list, nframes : int):
     anim.save("contour_animation.gif", writer=animation.PillowWriter(fps=10))
     plt.show()
     
+
     return anim
