@@ -26,8 +26,8 @@ class params:
     kbT = 1  
     
     # Box size
-    l_x = 1        # box size, x-direction
-    l_y = 1        # box size, y-direction
+    l_x = 10        # box size, x-direction
+    l_y = 10        # box size, y-direction
     
     # Fourier expansion
     exp_order = 3   # order of 2D Fourier expansion
@@ -38,7 +38,7 @@ class params:
     kappa_K = 1.0   # Bending modulus of Gaussian curvature (kbT units)
     
     # Size of Monte Carlo moves
-    delta = 0.01    # Standard deviation of perturbation size applied to Fourier coefficients
+    delta = 0.001   # Standard deviation of perturbation size applied to Fourier coefficients
     
     # X, Y grid for calculations
     npts = 100
@@ -120,7 +120,7 @@ def calc_fourier_derivatives(membrane : dict, x : float, y : float):
     h_y   = np.zeros_like(x, dtype=float)
     h_xx  = np.zeros_like(x, dtype=float)
     h_xy  = np.zeros_like(x, dtype=float)
-    h_xy  = np.zeros_like(x, dtype=float)
+    h_yy  = np.zeros_like(x, dtype=float)
 
     # Loop through Fourier expansion
     for n in range(params.exp_order):
@@ -151,17 +151,17 @@ def calc_fourier_derivatives(membrane : dict, x : float, y : float):
                      - membrane['gamma'][n, m] * A**2 * sinAx * cosBy
                      - membrane['zeta'][n, m]  * A**2 * sinAx * sinBy)
 
-            h_xy += (- membrane['alpha'][n, m] * B**2 * cosAx * cosBy
+            h_xy += (+ membrane['alpha'][n, m] * B**2 * cosAx * cosBy
                      - membrane['beta'][n, m]  * B**2 * cosAx * sinBy
                      - membrane['gamma'][n, m] * B**2 * sinAx * cosBy
-                     - membrane['zeta'][n, m]  * B**2 * sinAx * sinBy)
+                     + membrane['zeta'][n, m]  * B**2 * sinAx * sinBy)
 
-            h_xy += (+ membrane['alpha'][n, m] * A * B * sinAx * sinBy
+            h_yy += (- membrane['alpha'][n, m] * A * B * sinAx * sinBy
                      - membrane['beta'][n, m]  * A * B * sinAx * cosBy
                      - membrane['gamma'][n, m] * A * B * cosAx * sinBy
-                     + membrane['zeta'][n, m]  * A * B * cosAx * cosBy)
+                     - membrane['zeta'][n, m]  * A * B * cosAx * cosBy)
 
-    return h_x, h_y, h_xx, h_xy, h_xy
+    return h_x, h_y, h_xx, h_xy, h_yy
 
 
 def calc_shape_operator(membrane : dict, x : float, y : float):
@@ -177,7 +177,7 @@ def calc_shape_operator(membrane : dict, x : float, y : float):
     S_xy     : 2D array, shape operator at point x,y
     '''
     # Calculate partial derivatives of height
-    h, h_x, h_x, h_xx, h_xy, h_xy = calc_fourier_derivatives(membrane, x, y)
+    h_x, h_y, h_xx, h_xy, h_yy = calc_fourier_derivatives(membrane, x, y)
     
     # Normalisation factor
     norm_factor = (1 + h_x**2 + h_y**2)**(-3/2)
@@ -264,7 +264,7 @@ def calc_Helfrich_energy(H : float, K_G : float):
     OUTPUT
     tot_energy : float, Helfrich bending energy over surface
     '''    
-    energy_per_l = 2*params.kappa_H * ( H - params.H_0 )**2 + params.kappa_K * K_G
+    energy_per_l = 2*params.kappa_H * ( H - params.H_0 )**2 + params.kappa_K * abs(K_G) # avoid negative bending energy??
 
     subgrid_area = params.l_x * params.l_y / params.npts # for integration over total area
     
