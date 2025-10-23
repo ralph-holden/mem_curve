@@ -26,8 +26,8 @@ class params:
     kbT = 1  
     
     # Box size
-    l_x = 10        # box size, x-direction
-    l_y = 10        # box size, y-direction
+    l_x = 100       # box size, x-direction
+    l_y = 100       # box size, y-direction
     
     # Fourier expansion
     exp_order = 3   # order of 2D Fourier expansion
@@ -250,12 +250,12 @@ def calc_principle_curvatures(H : float, K_G : float):
 def calc_Helfrich_energy(H : float, K_G : float):
     '''
     Calculate Helfrich bending energy of membrane
-    Note: using bending POTENTIAL energy, NOT lipid bilayer bending FREE energy
-
-    Using Riemann integral in 2D to calculate bending energy over whole surface
-    Assuming:
-        Surface area = l_x * l_y (i.e. 2D area) -- fair for small perturbations
-        Small interval size ("subgrid_area"), for accurate Riemann integration
+    Note: using bending potential energy, NOT lipid bilayer bending FREE energy
+    
+    *** Check equation is correct
+    *** Find values for kappa_H, H_0, kappa_K
+    *** Energy be for whole surface -> acceptance ratio dependant on box size (esp. for high frequencies)
+        For small perturbations, can assume surface area = l_x * l_y (i.e. 2D area)
     
     INPUT
     H          : float, mean curvature
@@ -287,10 +287,10 @@ def montecarlomove(prev_membrane : dict):
     move_membrane : dict, new membrane with perturbed curvature Fourier coefficients AND associated energy
     '''
     # Fourier coefficient perturbations
-    delta_alpha = np.random.normal(loc=0, scale=params.delta, size=params.exp_order)
-    delta_beta  = np.random.normal(loc=0, scale=params.delta, size=params.exp_order)
-    delta_gamma = np.random.normal(loc=0, scale=params.delta, size=params.exp_order)
-    delta_zeta  = np.random.normal(loc=0, scale=params.delta, size=params.exp_order)
+    delta_alpha = np.random.normal(loc=0, scale=params.delta, size=(params.exp_order,params.exp_order))
+    delta_beta  = np.random.normal(loc=0, scale=params.delta, size=(params.exp_order,params.exp_order))
+    delta_gamma = np.random.normal(loc=0, scale=params.delta, size=(params.exp_order,params.exp_order))
+    delta_zeta  = np.random.normal(loc=0, scale=params.delta, size=(params.exp_order,params.exp_order))
 
     # Apply to a model membrane copy
     move_membrane = copy.deepcopy(prev_membrane)
@@ -428,5 +428,4 @@ def visualise(membrane_lst : list, nframes : int):
     anim.save("contour_animation.gif", writer=animation.PillowWriter(fps=10))
     plt.show()
     
-
     return anim
