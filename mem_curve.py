@@ -26,8 +26,8 @@ class params:
     kbT = 1  
     
     # Box size
-    l_x = 100       # box size, x-direction
-    l_y = 100       # box size, y-direction
+    l_x = 10        # box size, x-direction
+    l_y = 10        # box size, y-direction
     
     # Fourier expansion
     exp_order = 3   # order of 2D Fourier expansion
@@ -368,13 +368,14 @@ def montecarlostep(membrane_lst : list):
 
 # # # Code for visualisation / data analysis # # #
 
-def visualise(membrane_lst : list, nframes : int):
+def visualise(membrane_lst : list, nframes : int, save_dir=''):
     '''
     Visualise membrane curvature ensemble using heatmap plots
     
     INPUT
     membrane_lst : list of dict, contains curvature Fourier coefficients and associated energy
     nframes      : int, frequency/ interval size of frames
+    save_dir     : str, name of directory to save animation, from view of working directory
     
     OUPUT
     anim         : matplotlib.animation.FuncAnimation, animation of heatmap plots of membrane height
@@ -420,12 +421,12 @@ def visualise(membrane_lst : list, nframes : int):
         #cbar.set_label("Z value (scalar field)")
     
         # Update title
-        title.set_text(f"Step: {frame*nframes} , Energy: {round(energy_lst[frame], 2)}")
+        title.set_text(f'Step: {frame*nframes} , Energy: {round(energy_lst[frame], 2)}')
     
         return contour.collections + [title]
         
     anim = animation.FuncAnimation(fig, update, frames=len(Z_dump), interval=100, blit=False)
-    anim.save("contour_animation.gif", writer=animation.PillowWriter(fps=10))
+    anim.save(f'./{save_dir}/contour_animation.gif', writer=animation.PillowWriter(fps=10))
     plt.show()
     
     return anim
