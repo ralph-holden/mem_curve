@@ -38,7 +38,7 @@ class params:
     kappa_K = 1.0   # Bending modulus of Gaussian curvature (kbT units)
     
     # Size of Monte Carlo moves
-    delta = 0.001   # Standard deviation of perturbation size applied to Fourier coefficients
+    delta = 0.001   # Standard deviation of perturbation applied to Fourier coefficients
     
     # X, Y grid for calculations
     npts = 100
@@ -389,16 +389,20 @@ def visualise(membrane_lst : list, nframes : int, save_dir=''):
     # Calculate z-direction (heights)
     Z_dump = [calc_height(membrane, X, Y) for membrane in membrane_lst[::nframes]]
 
+    # Find that with maximum range for colourbar
+    ranges = [np.max(arr) - np.min(arr) for arr in Z_dump]
+    max_range_idx = np.argmax(ranges)
+    
     # Extract associated bending energies
     energy_lst = [membrane['energy'] for membrane in membrane_lst[::nframes]]
-
+    
     # Animation plot
     fig, ax = plt.subplots(figsize=[8, 6])
     
     # Initial contour and colorbar
-    contour = ax.contourf(X, Y, Z_dump[-1], levels=50, cmap='viridis', vmin=np.min(Z_dump), vmax=np.max(Z_dump))
+    contour = ax.contourf(X, Y, Z_dump[max_range_idx], levels=50, cmap='viridis', vmin=np.min(Z_dump), vmax=np.max(Z_dump))
     cbar = fig.colorbar(contour, ax=ax)
-    
+
     # Labels
     cbar.set_label("Height")
     title = ax.set_title("Frame 0")
