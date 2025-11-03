@@ -26,8 +26,8 @@ class params:
     kbT = 1  
     
     # Box size
-    l_x = 10        # box size, x-direction
-    l_y = 10        # box size, y-direction
+    l_x = 50        # box size, x-direction
+    l_y = 50        # box size, y-direction
     
     # Fourier expansion
     exp_order = 3   # order of 2D Fourier expansion
@@ -38,10 +38,10 @@ class params:
     kappa_K = 1.0   # Bending modulus of Gaussian curvature (kbT units)
     
     # Size of Monte Carlo moves
-    delta = 0.001   # Standard deviation of perturbation applied to Fourier coefficients
+    delta = 0.01    # Standard deviation of perturbation applied to Fourier coefficients
     
     # X, Y grid for calculations
-    npts = 100
+    npts = 200
     x = np.linspace(0, l_x, npts)
     y = np.linspace(0, l_y, npts)
     X, Y = np.meshgrid(x, y)
@@ -252,8 +252,6 @@ def calc_Helfrich_energy(H : float, K_G : float):
     Calculate Helfrich bending energy of membrane
     Note: using bending potential energy, NOT lipid bilayer bending FREE energy
     
-    *** Check equation is correct
-    *** Find values for kappa_H, H_0, kappa_K
     *** Energy be for whole surface -> acceptance ratio dependant on box size (esp. for high frequencies)
         For small perturbations, can assume surface area = l_x * l_y (i.e. 2D area)
     
@@ -425,7 +423,7 @@ def visualise(membrane_lst : list, nframes : int, save_dir=''):
         #cbar.set_label("Z value (scalar field)")
     
         # Update title
-        title.set_text(f'Step: {frame*nframes} , Energy: {round(energy_lst[frame], 2)}')
+        title.set_text(f'Step: {frame*nframes} , Energy: {round(energy_lst[frame], 1)}')
     
         return contour.collections + [title]
         
