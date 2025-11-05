@@ -34,7 +34,7 @@ class params:
     
     # Bending energies
     H_0     = 0.0   # Optimum mean curvature
-    kappa_H = 1.0   # Bending modulus of mean curvature (kbT units)
+    kappa_H = 20.0   # Bending modulus of mean curvature (kbT units)
     kappa_K = 1.0   # Bending modulus of Gaussian curvature (kbT units)
     
     # Size of Monte Carlo moves
