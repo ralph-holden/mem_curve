@@ -34,16 +34,16 @@ class params:
     
     # Bending energies
     H_0     = 0.0   # Optimum mean curvature
-    kappa_H = 20.0   # Bending modulus of mean curvature (kbT units)
-    kappa_K = 1.0   # Bending modulus of Gaussian curvature (kbT units)
+    kappa_H = 20.0   # Bending modulus of mean curvature (kbT/l units)
+    kappa_K = -20.0   # Bending modulus of Gaussian curvature (kbT/l units)
     
     # Size of Monte Carlo moves
-    delta = 0.01    # Standard deviation of perturbation applied to Fourier coefficients
+    delta = 0.003    # Standard deviation of perturbation applied to Fourier coefficients
     
     # X, Y grid for calculations
-    npts = 200
-    x = np.linspace(0, l_x, npts)
-    y = np.linspace(0, l_y, npts)
+    npts_x, npts_y = 100, 100
+    x = np.linspace(-l_x/2, l_x/2, npts_x)
+    y = np.linspace(-l_y/2, l_y/2, npts_y)
     X, Y = np.meshgrid(x, y)
 
 
@@ -262,9 +262,9 @@ def calc_Helfrich_energy(H : float, K_G : float):
     OUTPUT
     tot_energy : float, Helfrich bending energy over surface
     '''    
-    energy_per_l = 2*params.kappa_H * ( H - params.H_0 )**2 + params.kappa_K * abs(K_G) # avoid negative bending energy??
+    energy_per_l = 2*params.kappa_H * ( H - params.H_0 )**2 + abs(params.kappa_K * K_G) # avoid negative bending energy??
 
-    subgrid_area = params.l_x * params.l_y / params.npts # for integration over total area
+    subgrid_area = params.l_x * params.l_y / (params.npts_x * params.npts_y) # for integration over total area
     
     tot_energy   = np.sum(energy_per_l) * subgrid_area
     
@@ -379,9 +379,9 @@ def visualise(membrane_lst : list, nframes : int, save_dir=''):
     anim         : matplotlib.animation.FuncAnimation, animation of heatmap plots of membrane height
     '''
     # X,Y grid
-    npts = 100
-    x = np.linspace(0, params.l_x, npts)
-    y = np.linspace(0, params.l_y, npts)
+    npts_x, npts_y = 100, 100
+    x = np.linspace(-params.l_x/2, params.l_x/2, npts_x)
+    y = np.linspace(-params.l_y/2, params.l_y/2, npts_y)
     X, Y = np.meshgrid(x, y)
     
     # Calculate z-direction (heights)
@@ -410,11 +410,10 @@ def visualise(membrane_lst : list, nframes : int, save_dir=''):
     def update(frame):
         nonlocal contour#, cbar
     
-        # Remove previous contour
-        for coll in contour.collections:
-            coll.remove()
-        # Remove previous colorbar
-        #cbar.remove()
+        # Remove previous contour 
+        #for coll in contour.collections: -- for matplotlib <3.8
+        #    coll.remove()                
+        contour.remove()                 #-- for matplotlib >3.8
     
         # Draw new contour
         contour = ax.contourf(X, Y, Z_dump[frame], levels=50, cmap='viridis', vmin=np.min(Z_dump), vmax=np.max(Z_dump))
