@@ -34,16 +34,16 @@ class params:
     
     # Bending energies
     H_0     = 0.0   # Optimum mean curvature
-    kappa_H = 20.0   # Bending modulus of mean curvature (kbT/l units)
-    kappa_K = -20.0   # Bending modulus of Gaussian curvature (kbT/l units)
+    kappa_H = 20.0   # Bending rigidity of mean curvature (kbT*l units)
+    kappa_K = -20.0   # Bending rigidity of Gaussian curvature (kbT*l^2 units)
     
     # Size of Monte Carlo moves
     delta = 0.01    # Standard deviation of perturbation applied to Fourier coefficients
     
     # X, Y grid for calculations
-    npts_x, npts_y = 200, 200
-    x = np.linspace(-l_x/2, l_x/2, npts_x)
-    y = np.linspace(-l_y/2, l_y/2, npts_y)
+    npts = 4        # Number of points per l unit length -> npts^2 per l^2 unit area
+    x = np.linspace(-l_x/2, l_x/2, l_x * npts)
+    y = np.linspace(-l_y/2, l_y/2, l_y * npts)
     X, Y = np.meshgrid(x, y)
 
 
@@ -264,7 +264,7 @@ def calc_Helfrich_energy(H : float, K_G : float):
     '''    
     energy_per_l = 2*params.kappa_H * ( H - params.H_0 )**2 + abs(params.kappa_K * K_G) # avoid negative bending energy??
 
-    subgrid_area = params.l_x * params.l_y / (params.npts_x * params.npts_y) # for integration over total area
+    subgrid_area = 1 / (params.npts**2) # for integration over total area: l_x * l_y / ( l_x*npts * l_y*npts )
     
     tot_energy   = np.sum(energy_per_l) * subgrid_area
     
@@ -380,9 +380,9 @@ def visualise(membrane_lst : list, nframes : int, save_dir=''):
     anim         : matplotlib.animation.FuncAnimation, animation of heatmap plots of membrane height
     '''
     # X,Y grid
-    npts_x, npts_y = 100, 100
-    x = np.linspace(-params.l_x/2, params.l_x/2, npts_x)
-    y = np.linspace(-params.l_y/2, params.l_y/2, npts_y)
+    npts = 100
+    x = np.linspace(-params.l_x/2, params.l_x/2, l_x*npts)
+    y = np.linspace(-params.l_y/2, params.l_y/2, l_y*npts)
     X, Y = np.meshgrid(x, y)
     
     # Calculate z-direction (heights)
@@ -394,20 +394,18 @@ def visualise(membrane_lst : list, nframes : int, save_dir=''):
     # Find that with maximum range for colourbar
     #ranges = [np.max(arr) - np.min(arr) for arr in Z_dump]
     #max_range_idx = np.argmax(ranges)
-    #maxval = np.max(Z_dump[max_range_idx]) if np.max(Z_dump[max_range_idx])>abs(np.min(Z_dump[max_range_idx])) else np.min(Z_dump[max_range_idx])
-    Z_min, Z_argmin = np.min(Z_dump), np.argmin(Z_dump)
-    Z_max, Z_argmax = np.max(Z_dump), np.argmax(Z_dump)
-    maxval = Z_max if Z_max>abs(Z_min) else Z_min
+    #maxval = np.max(Z_dump[max_range_idx]) if np.max(Z_dump[max_range_idx])>abs(np.min(Z_dump[max_range_idx])) else abs(np.min(Z_dump[max_range_idx]))
+    Z_min, Z_max = np.min(Z_dump), np.max(Z_dump)
+    maxval = Z_max if Z_max>abs(Z_min) else abs(Z_min)
     Z_for_colourbar = Z_dump[0] + 0.0 # trick to make copy
-    Z_for_colourbar[0] = Z_min
-    Z_for_colourbar[1] = Z_max # edit values so they show up on colourbar
+    Z_for_colourbar[0], Z_for_colourbar[1] = Z_min, Z_max # edit values so they show up on colourbar
     
     # Animation plot
     fig, ax = plt.subplots(figsize=[8, 6])
     
     # Initial contour and colorbar
-    #contour = ax.contourf(X, Y, Z_dump[max_range_idx], levels=50, cmap='viridis', vmin=-abs(maxval), vmax=abs(maxval))
-    contour = ax.contourf(X, Y, Z_for_colourbar, levels=50, cmap='viridis', vmin=-abs(maxval), vmax=abs(maxval))
+    #contour = ax.contourf(X, Y, Z_dump[max_range_idx], levels=50, cmap='viridis', vmin=-maxval, vmax=maxval)
+    contour = ax.contourf(X, Y, Z_for_colourbar, levels=50, cmap='viridis', vmin=-maxval, vmax=maxval)
     cbar = fig.colorbar(contour, ax=ax)
 
     # Labels
@@ -428,10 +426,8 @@ def visualise(membrane_lst : list, nframes : int, save_dir=''):
         # Draw new contour
         contour = ax.contourf(
             X, Y, Z_dump[frame],
-            levels=50,
-            cmap='viridis',
-            vmin=-abs(maxval),
-            vmax=+abs(maxval))
+            levels=50, cmap='viridis',
+            vmin=-abs(maxval), vmax=+abs(maxval))
     
         # Update title
         title.set_text(f"Step: {frame * nframes} , Energy: {round(energy_lst[frame], 1)}")
