@@ -38,10 +38,10 @@ class params:
     kappa_K = -20.0   # Bending modulus of Gaussian curvature (kbT/l units)
     
     # Size of Monte Carlo moves
-    delta = 0.003    # Standard deviation of perturbation applied to Fourier coefficients
+    delta = 0.01    # Standard deviation of perturbation applied to Fourier coefficients
     
     # X, Y grid for calculations
-    npts_x, npts_y = 100, 100
+    npts_x, npts_y = 200, 200
     x = np.linspace(-l_x/2, l_x/2, npts_x)
     y = np.linspace(-l_y/2, l_y/2, npts_y)
     X, Y = np.meshgrid(x, y)
@@ -369,6 +369,7 @@ def montecarlostep(membrane_lst : list):
 def visualise(membrane_lst : list, nframes : int, save_dir=''):
     '''
     Visualise membrane curvature ensemble using heatmap plots
+    Note: un/comment code for use between matplotlib versions < & > 3.8 
     
     INPUT
     membrane_lst : list of dict, contains curvature Fourier coefficients and associated energy
@@ -386,45 +387,57 @@ def visualise(membrane_lst : list, nframes : int, save_dir=''):
     
     # Calculate z-direction (heights)
     Z_dump = [calc_height(membrane, X, Y) for membrane in membrane_lst[::nframes]]
-
-    # Find that with maximum range for colourbar
-    ranges = [np.max(arr) - np.min(arr) for arr in Z_dump]
-    max_range_idx = np.argmax(ranges)
     
     # Extract associated bending energies
     energy_lst = [membrane['energy'] for membrane in membrane_lst[::nframes]]
+
+    # Find that with maximum range for colourbar
+    #ranges = [np.max(arr) - np.min(arr) for arr in Z_dump]
+    #max_range_idx = np.argmax(ranges)
+    #maxval = np.max(Z_dump[max_range_idx]) if np.max(Z_dump[max_range_idx])>abs(np.min(Z_dump[max_range_idx])) else np.min(Z_dump[max_range_idx])
+    Z_min, Z_argmin = np.min(Z_dump), np.argmin(Z_dump)
+    Z_max, Z_argmax = np.max(Z_dump), np.argmax(Z_dump)
+    maxval = Z_max if Z_max>abs(Z_min) else Z_min
+    Z_for_colourbar = Z_dump[0] + 0.0 # trick to make copy
+    Z_for_colourbar[0] = Z_min
+    Z_for_colourbar[1] = Z_max # edit values so they show up on colourbar
     
     # Animation plot
     fig, ax = plt.subplots(figsize=[8, 6])
     
     # Initial contour and colorbar
-    contour = ax.contourf(X, Y, Z_dump[max_range_idx], levels=50, cmap='viridis', vmin=np.min(Z_dump), vmax=np.max(Z_dump))
+    #contour = ax.contourf(X, Y, Z_dump[max_range_idx], levels=50, cmap='viridis', vmin=-abs(maxval), vmax=abs(maxval))
+    contour = ax.contourf(X, Y, Z_for_colourbar, levels=50, cmap='viridis', vmin=-abs(maxval), vmax=abs(maxval))
     cbar = fig.colorbar(contour, ax=ax)
 
     # Labels
     cbar.set_label("Height")
     title = ax.set_title("Frame 0")
     ax.set_xlabel("X")
-    ax.set_ylabel("Y")
+    ax.set_ylabel("Y", rotation=90)
 
     def update(frame):
-        nonlocal contour#, cbar
-    
-        # Remove previous contour 
+        nonlocal contour 
+        
+        # Remove previous contour
         #for coll in contour.collections: -- for matplotlib <3.8
-        #    coll.remove()                
-        contour.remove()                 #-- for matplotlib >3.8
+        #    coll.remove() 
+        if contour is not None:
+            contour.remove()  # -- for matplotlib >= 3.8
     
         # Draw new contour
-        contour = ax.contourf(X, Y, Z_dump[frame], levels=50, cmap='viridis', vmin=np.min(Z_dump), vmax=np.max(Z_dump))
-        # Add updated colorbar
-        #cbar = fig.colorbar(contour, ax=ax)
-        #cbar.set_label("Z value (scalar field)")
+        contour = ax.contourf(
+            X, Y, Z_dump[frame],
+            levels=50,
+            cmap='viridis',
+            vmin=-abs(maxval),
+            vmax=+abs(maxval))
     
         # Update title
-        title.set_text(f'Step: {frame*nframes} , Energy: {round(energy_lst[frame], 1)}')
-    
-        return contour.collections + [title]
+        title.set_text(f"Step: {frame * nframes} , Energy: {round(energy_lst[frame], 1)}")
+
+        #return contour.collections + [title] # -- for matplotlib <3.8
+        return [contour, title] 
         
     anim = animation.FuncAnimation(fig, update, frames=len(Z_dump), interval=100, blit=False)
     anim.save(f'./{save_dir}/contour_animation.gif', writer=animation.PillowWriter(fps=10))
