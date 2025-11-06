@@ -1,6 +1,2 @@
 # mem_curve
-Explore stable membrane curvatures using Monte Carlo simulation
-
-! Need to...
-
-Investigate gridsize & boundary effects
+Explore stable membrane curvatures using Monte Carlo simulation of Fourier coefficients. Use to initialise membranes for MD simulation.
