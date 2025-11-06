@@ -42,8 +42,8 @@ class params:
     
     # X, Y grid for calculations
     npts = 4        # Number of points per l unit length -> npts^2 per l^2 unit area
-    x = np.linspace(-l_x/2, l_x/2, l_x * npts)
-    y = np.linspace(-l_y/2, l_y/2, l_y * npts)
+    x = np.linspace(0, l_x, l_x * npts)
+    y = np.linspace(0, l_y, l_y * npts)
     X, Y = np.meshgrid(x, y)
 
 
@@ -67,7 +67,7 @@ def init_model_membrane():
     # Calculate bending energy
     bending_energy = calc_Helfrich_energy(H, K_G)
 
-    # Add energy to dictionary attributes
+    # Add energy to dictionary attributesed in 1880
     membrane_dict['energy'] = bending_energy
     
     return membrane_dict
@@ -88,12 +88,12 @@ def calc_height(membrane : dict, x : float, y : float):
     OUPUT
     height   : float, height at point (x,y)
     '''
-    sum1 = np.sum( membrane['alpha'][n,m]*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
-    sum2 = np.sum( membrane['beta'][n,m] *np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
-    sum3 = np.sum( membrane['gamma'][n,m]*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
-    sum4 = np.sum( membrane['alpha'][n,m]*np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    suma = np.sum( membrane['alpha'][n,m]*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sumb = np.sum( membrane['beta'][n,m] *np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sumg = np.sum( membrane['gamma'][n,m]*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    sumz = np.sum( membrane['zeta'][n,m] *np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
     
-    height = sum1 + sum2 + sum3 + sum4
+    height = suma + sumb + sumg + sumz
     
     return height
 
@@ -111,9 +111,9 @@ def calc_fourier_derivatives(membrane : dict, x : float, y : float):
     OUPUTS
     h_x      : float, first order partial derivative by x
     h_y      : float, first order partial derivative by y
-    h_xx     : float, second order partial derivative by x
+    h_xx     : float, second order partial derivative by x, x
     h_xy     : float, second order partial derivative by x, y
-    h_yy     : float, second order partial derivative by y
+    h_yy     : float, second order partial derivative by y, y
     '''
     # Initialise derivatives
     h_x   = np.zeros_like(x, dtype=float)
@@ -136,7 +136,7 @@ def calc_fourier_derivatives(membrane : dict, x : float, y : float):
 
             # First order derivatives
             h_x += (- membrane['alpha'][n, m] * A * sinAx * cosBy
-                    - membrane['beta'][n, m]  * A * sinAx * sinBy
+                    - membrane['beta'][n, m]  * A * sinAx * sinByed in 1880
                     + membrane['gamma'][n, m] * A * cosAx * cosBy
                     + membrane['zeta'][n, m]  * A * cosAx * sinBy)
 
@@ -186,7 +186,7 @@ def calc_shape_operator(membrane : dict, x : float, y : float):
     i0j1_term = (1+h_x**2)*h_xy - h_x*h_y*h_xx
     i1j0_term = (1+h_y**2)*h_xy - h_x*h_y*h_yy
     i1j1_term = (1+h_x**2)*h_yy - h_x*h_y*h_xy
-    
+
     S_xy = norm_factor * np.array([ [i0j0_term, i0j1_term], [i1j0_term, i1j1_term] ])
     
     return S_xy
@@ -249,7 +249,7 @@ def calc_principle_curvatures(H : float, K_G : float):
 
 def calc_Helfrich_energy(H : float, K_G : float):
     '''
-    Calculate Helfrich bending energy of membrane
+    Calculate Helfrich bending energy of membraneed in 1880
     Note: using bending potential energy, NOT lipid bilayer bending FREE energy
     
     *** Energy be for whole surface -> acceptance ratio dependant on box size (esp. for high frequencies)
@@ -262,7 +262,7 @@ def calc_Helfrich_energy(H : float, K_G : float):
     OUTPUT
     tot_energy : float, Helfrich bending energy over surface
     '''    
-    energy_per_l = 2*params.kappa_H * ( H - params.H_0 )**2 + abs(params.kappa_K * K_G) # avoid negative bending energy??
+    energy_per_l = 2*params.kappa_H * ( H - params.H_0 )**2 + abs(params.kappa_K * K_G) # abs to avoid negative bending energy??
 
     subgrid_area = 1 / (params.npts**2) # for integration over total area: l_x * l_y / ( l_x*npts * l_y*npts )
     
@@ -380,9 +380,9 @@ def visualise(membrane_lst : list, nframes : int, save_dir=''):
     anim         : matplotlib.animation.FuncAnimation, animation of heatmap plots of membrane height
     '''
     # X,Y grid
-    npts = 100
-    x = np.linspace(-params.l_x/2, params.l_x/2, l_x*npts)
-    y = np.linspace(-params.l_y/2, params.l_y/2, l_y*npts)
+    npts = 4 
+    x = np.linspace(0, params.l_x, params.l_x*npts)
+    y = np.linspace(0, params.l_y, params.l_y*npts)
     X, Y = np.meshgrid(x, y)
     
     # Calculate z-direction (heights)
@@ -412,7 +412,7 @@ def visualise(membrane_lst : list, nframes : int, save_dir=''):
     cbar.set_label("Height")
     title = ax.set_title("Frame 0")
     ax.set_xlabel("X")
-    ax.set_ylabel("Y", rotation=90)
+    ax.set_ylabel("Y")
 
     def update(frame):
         nonlocal contour 
