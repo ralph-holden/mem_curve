@@ -30,7 +30,7 @@ class params:
     l_y = 50        # box size, y-direction
     
     # Fourier expansion
-    exp_order = 3   # order of 2D Fourier expansion
+    exp_order = 4   # order of 2D Fourier expansion
     
     # Bending energies
     H_0     = 0.0   # Optimum mean curvature
@@ -41,7 +41,7 @@ class params:
     delta = 0.01    # Standard deviation of perturbation applied to Fourier coefficients
     
     # X, Y grid for calculations
-    npts = 4        # Number of points per l unit length -> npts^2 per l^2 unit area
+    npts = 5        # Number of points per l unit length -> npts^2 per l^2 unit area
     x = np.linspace(0, l_x, l_x * npts)
     y = np.linspace(0, l_y, l_y * npts)
     X, Y = np.meshgrid(x, y)
@@ -50,27 +50,36 @@ class params:
 def init_model_membrane():
     '''
     Make class that stores Fourier cofficients describing surface (for 3rd order 2D expansion)
+
+    INPUTS
+    None
+
+    OUTPUT
+    membrane : dictionary, contains Fourier coefficients for flat surface and the associated bending energy
     ''' 
-    membrane_dict = {
+    membrane = {
     'alpha' : np.zeros((params.exp_order, params.exp_order)),
     'beta'  : np.zeros((params.exp_order, params.exp_order)),
     'gamma' : np.zeros((params.exp_order, params.exp_order)),
-    'zeta'  : np.zeros((params.exp_order, params.exp_order))
-    }
+    'zeta'  : np.zeros((params.exp_order, params.exp_order))}
 
-    # Calculate first membrane energy
+    # Calculate first membrane energy...
+    # Calculate partial derivatives of height
+    h_x, h_y, h_xx, h_xy, h_yy = calc_fourier_derivatives(membrane, params.X, params.Y)
     # Calculate shape operator
-    S = calc_shape_operator(membrane_dict, params.X, params.Y)
+    S = calc_shape_operator(h_x, h_y, h_xx, h_xy, h_yy)
+    # Calculate change in area from membrane bending
+    dA = calc_area_element(h_x, h_y)
     # Calculate mean and Gaussian curvatures
     H   = calc_H(S)
     K_G = calc_K_G(S)
     # Calculate bending energy
-    bending_energy = calc_Helfrich_energy(H, K_G)
+    bending_energy = calc_Helfrich_energy(H, K_G, dA)
 
-    # Add energy to dictionary attributesed in 1880
-    membrane_dict['energy'] = bending_energy
+    # Add energy to dictionary attributes
+    membrane['energy'] = bending_energy
     
-    return membrane_dict
+    return membrane
 
 
 
@@ -136,7 +145,7 @@ def calc_fourier_derivatives(membrane : dict, x : float, y : float):
 
             # First order derivatives
             h_x += (- membrane['alpha'][n, m] * A * sinAx * cosBy
-                    - membrane['beta'][n, m]  * A * sinAx * sinByed in 1880
+                    - membrane['beta'][n, m]  * A * sinAx * sinBy
                     + membrane['gamma'][n, m] * A * cosAx * cosBy
                     + membrane['zeta'][n, m]  * A * cosAx * sinBy)
 
@@ -164,21 +173,20 @@ def calc_fourier_derivatives(membrane : dict, x : float, y : float):
     return h_x, h_y, h_xx, h_xy, h_yy
 
 
-def calc_shape_operator(membrane : dict, x : float, y : float):
+def calc_shape_operator(h_x : float, h_y : float, h_xx : float, h_xy : float, h_yy : float):
     '''
     Calculate the shape operator at point (x,y)
     
     INPUT
-    membrane : dict,  holds Fourier coefficients and associated bending energy
-    x        : float, x-position
-    y        : float, y-position
+    h_x  : float, first order partial derivative by x
+    h_y  : float, first order partial derivative by y
+    h_xx : float, second order partial derivative by x, x
+    h_xy : float, second order partial derivative by x, y
+    h_yy : float, second order partial derivative by y, y
     
     OUPUT
-    S_xy     : 2D array, shape operator at point x,y
+    S_xy : 2D array, shape operator at point x,y
     '''
-    # Calculate partial derivatives of height
-    h_x, h_y, h_xx, h_xy, h_yy = calc_fourier_derivatives(membrane, x, y)
-    
     # Normalisation factor
     norm_factor = (1 + h_x**2 + h_y**2)**(-3/2)
     
@@ -190,6 +198,24 @@ def calc_shape_operator(membrane : dict, x : float, y : float):
     S_xy = norm_factor * np.array([ [i0j0_term, i0j1_term], [i1j0_term, i1j1_term] ])
     
     return S_xy
+
+
+def calc_area_element(h_x : float, h_y : float):
+    '''
+    Calculate the area element (dA) of a "monge patch" at x, y
+    Note: x, y positions specified when calculating h_x, h_y in calc_shape_operator 
+
+    INPUTS
+    h_x : float, partial derivative of height by x at point x,y
+    h_y : float, partial derivative of height by y at point x,y
+
+    OUPUTS
+    dA  : float, area element of "monge patch"
+    '''
+    dA = np.sqrt(1 + h_x**2 + h_y**2)
+    #dA = 1 + np.sum(dA_parts)
+
+    return dA
 
 
 def calc_H(S_xy: np.ndarray):
@@ -247,9 +273,9 @@ def calc_principle_curvatures(H : float, K_G : float):
     return k_1, k_2
 
 
-def calc_Helfrich_energy(H : float, K_G : float):
+def calc_Helfrich_energy(H : float, K_G : float, dA = 1):
     '''
-    Calculate Helfrich bending energy of membraneed in 1880
+    Calculate Helfrich bending energy of membrane
     Note: using bending potential energy, NOT lipid bilayer bending FREE energy
     
     *** Energy be for whole surface -> acceptance ratio dependant on box size (esp. for high frequencies)
@@ -258,15 +284,16 @@ def calc_Helfrich_energy(H : float, K_G : float):
     INPUT
     H          : float, mean curvature
     K_G        : float, Gaussian curvature
+    dA         : float, change in 2D area from membrane bending
     
     OUTPUT
     tot_energy : float, Helfrich bending energy over surface
     '''    
-    energy_per_l = 2*params.kappa_H * ( H - params.H_0 )**2 + abs(params.kappa_K * K_G) # abs to avoid negative bending energy??
+    energy_per_l = 2*params.kappa_H * ( H - params.H_0 )**2 + abs(params.kappa_K * K_G) # abs to avoid negative bending energy
 
-    subgrid_area = 1 / (params.npts**2) # for integration over total area: l_x * l_y / ( l_x*npts * l_y*npts )
+    subgrid_area = 1 / (dA * params.npts**2) # for integration over total (2D) area
     
-    tot_energy   = np.sum(energy_per_l) * subgrid_area
+    tot_energy   = np.sum(energy_per_l * subgrid_area)
     
     return tot_energy
 
@@ -297,15 +324,21 @@ def montecarlomove(prev_membrane : dict):
     move_membrane['gamma'] += delta_gamma
     move_membrane['zeta']  += delta_zeta
 
+    # Calculate local height derivatives from Fourier surface
+    h_x, h_y, h_xx, h_xy, h_yy = calc_fourier_derivatives(move_membrane, params.X, params.Y)
+    
     # Calculate shape operator
-    S = calc_shape_operator(move_membrane, params.X, params.Y)
+    S = calc_shape_operator(h_x, h_y, h_xx, h_xy, h_yy)
+
+    # Calculate change in area from membrane bending
+    dA = calc_area_element(h_x, h_y)
     
     # Calculate mean and Gaussian curvatures
     H   = calc_H(S)
     K_G = calc_K_G(S)
     
     # Calculate bending energy
-    move_energy = calc_Helfrich_energy(H, K_G)
+    move_energy = calc_Helfrich_energy(H, K_G, dA) # set dA=1 to ignore
     # Add to dictionary
     move_membrane['energy'] = move_energy
     
