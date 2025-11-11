@@ -85,92 +85,112 @@ def init_model_membrane():
 
 # # # Functions for calculating bending free energy # # #
 
-def calc_height(membrane : dict, x : float, y : float):
+def calc_height(alpha : np.array, beta : np.array, gamma : np.array, zeta : np.array, X : np.array, Y : np.array, l_x : float, l_y : float):
     '''
     Calculate height (z-direction) of model membrane using 2D Fourier expansion
     
     INPUT
-    membrane : dict,  holds Fourier coefficients and associated bending energy
-    x        : float, x-position 
-    y        : float, y-postiion
+    alpha  : ndarray, Fourier series coefficient, params.exp_order square matrix
+    beta   : ndarray, Fourier series coefficient, params.exp_order square matrix
+    gamma  : ndarray, Fourier series coefficient, params.exp_order square matrix
+    zeta   : ndarray, Fourier series coefficient, params.exp_order square matrix
+    x      : ndarray, x-position 
+    y      : ndarray, y-postiion
+    l_x    : float, length of simulation box in X-axis
+    l_y    : float, length of simulation box in Y-axis
     
     OUPUT
-    height   : float, height at point (x,y)
+    height : float, height at point (x,y)
     '''
-    suma = np.sum( membrane['alpha'][n,m]*np.cos(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
-    sumb = np.sum( membrane['beta'][n,m] *np.cos(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
-    sumg = np.sum( membrane['gamma'][n,m]*np.sin(2*np.pi*n*x/params.l_x)*np.cos(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
-    sumz = np.sum( membrane['zeta'][n,m] *np.sin(2*np.pi*n*x/params.l_x)*np.sin(2*np.pi*m*y/params.l_y) for n in range(params.exp_order) for m in range(params.exp_order) )
+    # Sum integers
+    n = np.arange(params.exp_order)
+    m = np.arange(params.exp_order)
+    
+    # Add two extra dimensions for broadcasting with 2D X, Y
+    cos_nx = np.cos(2*np.pi*n[:, None, None]*X/l_x) 
+    cos_my = np.cos(2*np.pi*m[:, None, None]*Y/l_y)  
+    sin_nx = np.sin(2*np.pi*n[:, None, None]*X/l_x)
+    sin_my = np.sin(2*np.pi*m[:, None, None]*Y/l_y)
+    
+    # Compute all four sums using einsum
+    suma = np.einsum('nm,nij,mij->ij', membrane['alpha'], cos_nx, cos_my)
+    sumb = np.einsum('nm,nij,mij->ij', membrane['beta'],  cos_nx, sin_my)
+    sumg = np.einsum('nm,nij,mij->ij', membrane['gamma'], sin_nx, cos_my)
+    sumz = np.einsum('nm,nij,mij->ij', membrane['zeta'],  sin_nx, sin_my)
     
     height = suma + sumb + sumg + sumz
-    
+
     return height
+    
 
-
-def calc_fourier_derivatives(membrane : dict, x : float, y : float):
+def calc_fourier_derivatives(alpha : np.array, beta : np.array, gamma : np.array, zeta : np.array, X : np.array, Y : np.array, l_x : float, l_y : float):
     '''
     Compute a 2D Fourier expansion h(x,y) and its derivatives up to second order.
-    Parallelised loops over all derivatives.
 
     INPUT
-    membrane : dict,  holds Fourier coefficients and associated bending energy
-    x        : float, x_position
-    y        : float, y-position 
+    alpha  : ndarray, Fourier series coefficients, params.exp_order square matrix
+    beta   : ndarray, Fourier series coefficients, params.exp_order square matrix
+    gamma  : ndarray, Fourier series coefficients, params.exp_order square matrix
+    zeta   : ndarray, Fourier series coefficients, params.exp_order square matrix
+    x      : ndarray, 2D array of x_positions (meshgrid)
+    y      : ndarray, 2D array of y-positions (meshgrid)
+    l_x    : float, length of simulation box in X-axis
+    l_y    : float, length of simulation box in Y-axis
 
     OUPUTS
-    h_x      : float, first order partial derivative by x
-    h_y      : float, first order partial derivative by y
-    h_xx     : float, second order partial derivative by x, x
-    h_xy     : float, second order partial derivative by x, y
-    h_yy     : float, second order partial derivative by y, y
+    h_x    : float, first order partial derivative by x
+    h_y    : float, first order partial derivative by y
+    h_xx   : float, second order partial derivative by x, x
+    h_xy   : float, second order partial derivative by x, y
+    h_yy   : float, second order partial derivative by y, y
     '''
-    # Initialise derivatives
-    h_x   = np.zeros_like(x, dtype=float)
-    h_y   = np.zeros_like(x, dtype=float)
-    h_xx  = np.zeros_like(x, dtype=float)
-    h_xy  = np.zeros_like(x, dtype=float)
-    h_yy  = np.zeros_like(x, dtype=float)
+    # Sum integers
+    n = np.arange(params.exp_order)
+    m = np.arange(params.exp_order)
+    
+    # Compute differentiated trig arguments
+    A = (2 * np.pi * n / l_x)[:, None, None]
+    B = (2 * np.pi * m / l_y)[:, None, None]
+    
+    # Compute trig functions once
+    cos_nx = np.cos(2*np.pi*n[:, None, None]*X/l_x)
+    sin_nx = np.sin(2*np.pi*n[:, None, None]*X/l_x)
+    cos_my = np.cos(2*np.pi*m[:, None, None]*Y/l_y)
+    sin_my = np.sin(2*np.pi*m[:, None, None]*Y/l_y)
+    
+    # First order derivatives using einsum
+    h_x = np.einsum('nm,nij,mij->ij', -membrane['alpha'] * (2*np.pi*n/l_x)[:, None], sin_nx, cos_my) + \
+          np.einsum('nm,nij,mij->ij', -membrane['beta']  * (2*np.pi*n/l_x)[:, None], sin_nx, sin_my) + \
+          np.einsum('nm,nij,mij->ij', +membrane['gamma'] * (2*np.pi*n/l_x)[:, None], cos_nx, cos_my) + \
+          np.einsum('nm,nij,mij->ij', +membrane['zeta']  * (2*np.pi*n/l_x)[:, None], cos_nx, sin_my)
+    
+    h_y = np.einsum('nm,nij,mij->ij', -membrane['alpha'] * (2*np.pi*m/l_y)[None, :], cos_nx, sin_my) + \
+          np.einsum('nm,nij,mij->ij', +membrane['beta']  * (2*np.pi*m/l_y)[None, :], cos_nx, cos_my) + \
+          np.einsum('nm,nij,mij->ij', -membrane['gamma'] * (2*np.pi*m/l_y)[None, :], sin_nx, sin_my) + \
+          np.einsum('nm,nij,mij->ij', +membrane['zeta']  * (2*np.pi*m/l_y)[None, :], sin_nx, cos_my)
+    
+    # Second order derivatives...
+    # Compute differentiated trig arguments
+    A_sq = (2*np.pi*n/l_x)**2
+    B_sq = (2*np.pi*m/l_y)**2
+    AB = (2*np.pi*n/l_x)[:, None] * (2*np.pi*m/l_y)[None, :]
+    
+    h_xx = np.einsum('nm,nij,mij->ij', -membrane['alpha'] * A_sq[:, None], cos_nx, cos_my) + \
+           np.einsum('nm,nij,mij->ij', -membrane['beta']  * A_sq[:, None], cos_nx, sin_my) + \
+           np.einsum('nm,nij,mij->ij', -membrane['gamma'] * A_sq[:, None], sin_nx, cos_my) + \
+           np.einsum('nm,nij,mij->ij', -membrane['zeta']  * A_sq[:, None], sin_nx, sin_my)
+    
+    h_xy = np.einsum('nm,nij,mij->ij', +membrane['alpha'] * B_sq[None, :], cos_nx, cos_my) + \
+           np.einsum('nm,nij,mij->ij', -membrane['beta']  * B_sq[None, :], cos_nx, sin_my) + \
+           np.einsum('nm,nij,mij->ij', -membrane['gamma'] * B_sq[None, :], sin_nx, cos_my) + \
+           np.einsum('nm,nij,mij->ij', +membrane['zeta']  * B_sq[None, :], sin_nx, sin_my)
+    
+    h_yy = np.einsum('nm,nij,mij->ij', -membrane['alpha'] * AB, sin_nx, sin_my) + \
+           np.einsum('nm,nij,mij->ij', -membrane['beta']  * AB, sin_nx, cos_my) + \
+           np.einsum('nm,nij,mij->ij', -membrane['gamma'] * AB, cos_nx, sin_my) + \
+           np.einsum('nm,nij,mij->ij', -membrane['zeta']  * AB, cos_nx, cos_my)
 
-    # Loop through Fourier expansion
-    for n in range(params.exp_order):
-        for m in range(params.exp_order):
-            
-            A = 2 * np.pi * n / params.l_x
-            B = 2 * np.pi * m / params.l_y
-
-            cosAx = np.cos(A * x)
-            sinAx = np.sin(A * x)
-            cosBy = np.cos(B * y)
-            sinBy = np.sin(B * y)
-
-            # First order derivatives
-            h_x += (- membrane['alpha'][n, m] * A * sinAx * cosBy
-                    - membrane['beta'][n, m]  * A * sinAx * sinBy
-                    + membrane['gamma'][n, m] * A * cosAx * cosBy
-                    + membrane['zeta'][n, m]  * A * cosAx * sinBy)
-
-            h_y += (- membrane['alpha'][n, m] * B * cosAx * sinBy
-                    + membrane['beta'][n, m]  * B * cosAx * cosBy
-                    - membrane['gamma'][n, m] * B * sinAx * sinBy
-                    + membrane['zeta'][n, m]  * B * sinAx * cosBy)
-
-            # Second order derivatives
-            h_xx += (- membrane['alpha'][n, m] * A**2 * cosAx * cosBy
-                     - membrane['beta'][n, m]  * A**2 * cosAx * sinBy
-                     - membrane['gamma'][n, m] * A**2 * sinAx * cosBy
-                     - membrane['zeta'][n, m]  * A**2 * sinAx * sinBy)
-
-            h_xy += (+ membrane['alpha'][n, m] * B**2 * cosAx * cosBy
-                     - membrane['beta'][n, m]  * B**2 * cosAx * sinBy
-                     - membrane['gamma'][n, m] * B**2 * sinAx * cosBy
-                     + membrane['zeta'][n, m]  * B**2 * sinAx * sinBy)
-
-            h_yy += (- membrane['alpha'][n, m] * A * B * sinAx * sinBy
-                     - membrane['beta'][n, m]  * A * B * sinAx * cosBy
-                     - membrane['gamma'][n, m] * A * B * cosAx * sinBy
-                     - membrane['zeta'][n, m]  * A * B * cosAx * cosBy)
-
-    return h_x, h_y, h_xx, h_xy, h_yy
+    return h_x, h_y, h_xx, h_xy, h_yy 
 
 
 def calc_shape_operator(h_x : float, h_y : float, h_xx : float, h_xy : float, h_yy : float):
@@ -277,9 +297,9 @@ def calc_Helfrich_energy(H : float, K_G : float, dA = 1):
     '''
     Calculate Helfrich bending energy of membrane
     Note: using bending potential energy, NOT lipid bilayer bending FREE energy
+    Using change in 2D area from bending, dA, to rescale the 2D area at every point
     
     *** Energy be for whole surface -> acceptance ratio dependant on box size (esp. for high frequencies)
-        For small perturbations, can assume surface area = l_x * l_y (i.e. 2D area)
     
     INPUT
     H          : float, mean curvature

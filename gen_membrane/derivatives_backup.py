@@ -148,3 +148,104 @@ def calc_shape_operator_piecewise(membrane : dict, x : float, y : float):
     S_xy = norm_factor * np.array([ [i0j0_term, i0j1_term], [i1j0_term, i1j1_term] ])
     
     return S_xy
+
+
+def calc_height_slow(alpha : float, beta : float, gamma : float, zeta : float, x : float, y : float, l_x : float, l_y : float):
+    '''
+    Calculate height (z-direction) of model membrane using 2D Fourier expansion
+    
+    INPUT
+    alpha  : ndarray, Fourier series coefficient, params.exp_order square matrix
+    beta   : ndarray, Fourier series coefficient, params.exp_order square matrix
+    gamma  : ndarray, Fourier series coefficient, params.exp_order square matrix
+    zeta   : ndarray, Fourier series coefficient, params.exp_order square matrix
+    x      : float, x-position 
+    y      : float, y-postiion
+    l_x    : float, length of simulation box in X-axis
+    l_y    : float, length of simulation box in Y-axis
+    
+    OUPUT
+    height : float, height at point (x,y)
+    '''
+    suma, sumb, sumg, sumz = 0, 0, 0, 0
+    for n in range(params.exp_order):
+        for m in range(params.exp_order):
+            suma += alpha[n,m] * np.cos(2*np.pi*n*x/l_x)*np.cos(2*np.pi*m*y/l_y)
+            sumb += beta[n,m]  * np.cos(2*np.pi*n*x/l_x)*np.sin(2*np.pi*m*y/l_y) 
+            sumg += gamma[n,m] * np.sin(2*np.pi*n*x/l_x)*np.cos(2*np.pi*m*y/l_y)
+            sumz += zeta[n,m]  * np.sin(2*np.pi*n*x/l_x)*np.sin(2*np.pi*m*y/l_y)
+    
+    height = suma + sumb + sumg + sumz
+    
+    return height
+
+
+def calc_fourier_derivatives_slow(alpha : float, beta : float, gamma : float, zeta : float, x : float, y : float, l_x : float, l_y : float):
+    '''
+    Compute a 2D Fourier expansion h(x,y) and its derivatives up to second order.
+    Parallelised loops over all derivatives.
+
+    INPUT
+    alpha  : ndarray, Fourier series coefficient, params.exp_order square matrix
+    beta   : ndarray, Fourier series coefficient, params.exp_order square matrix
+    gamma  : ndarray, Fourier series coefficient, params.exp_order square matrix
+    zeta   : ndarray, Fourier series coefficient, params.exp_order square matrix
+    x      : float, x_position
+    y      : float, y-position 
+    l_x    : float, length of simulation box in X-axis
+    l_y    : float, length of simulation box in Y-axis
+
+    OUPUTS
+    h_x    : float, first order partial derivative by x
+    h_y    : float, first order partial derivative by y
+    h_xx   : float, second order partial derivative by x, x
+    h_xy   : float, second order partial derivative by x, y
+    h_yy   : float, second order partial derivative by y, y
+    '''
+    # Initialise derivatives
+    h_x   = np.zeros_like(x, dtype=float)
+    h_y   = np.zeros_like(x, dtype=float)
+    h_xx  = np.zeros_like(x, dtype=float)
+    h_xy  = np.zeros_like(x, dtype=float)
+    h_yy  = np.zeros_like(x, dtype=float)
+
+    # Loop through Fourier expansion
+    for n in range(params.exp_order):
+        for m in range(params.exp_order):
+            
+            A = 2 * np.pi * n / l_x
+            B = 2 * np.pi * m / l_y
+
+            cosAx = np.cos(A * x)
+            sinAx = np.sin(A * x)
+            cosBy = np.cos(B * y)
+            sinBy = np.sin(B * y)
+
+            # First order derivatives
+            h_x += (- alpha[n,m] * A * sinAx * cosBy
+                    - beta[n,m]  * A * sinAx * sinBy
+                    + gamma[n,m] * A * cosAx * cosBy
+                    + zeta[n,m]  * A * cosAx * sinBy)
+
+            h_y += (- alpha[n,m] * B * cosAx * sinBy
+                    + beta[n,m]  * B * cosAx * cosBy
+                    - gamma[n,m] * B * sinAx * sinBy
+                    + zeta[n,m]  * B * sinAx * cosBy)
+
+            # Second order derivatives
+            h_xx += (- alpha[n,m] * A**2 * cosAx * cosBy
+                     - beta[n,m]  * A**2 * cosAx * sinBy
+                     - gamma[n,m] * A**2 * sinAx * cosBy
+                     - zeta[n,m]  * A**2 * sinAx * sinBy)
+
+            h_xy += (+ alpha[n,m] * B**2 * cosAx * cosBy
+                     - beta[n,m]  * B**2 * cosAx * sinBy
+                     - gamma[n,m] * B**2 * sinAx * cosBy
+                     + zeta[n,m]  * B**2 * sinAx * sinBy)
+
+            h_yy += (- alpha[n,m] * A * B * sinAx * sinBy
+                     - beta[n,m]  * A * B * sinAx * cosBy
+                     - gamma[n,m] * A * B * cosAx * sinBy
+                     - zeta[n,m]  * A * B * cosAx * cosBy)
+
+    return h_x, h_y, h_xx, h_xy, h_yy
