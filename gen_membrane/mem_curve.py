@@ -26,42 +26,47 @@ class params:
     kbT = 1  
     
     # Box size
-    l_x = 50        # box size, x-direction
-    l_y = 50        # box size, y-direction
+    l_x = 50             # box size, x-direction
+    l_y = 50             # box size, y-direction
     
     # Fourier expansion
-    exp_order = 4   # order of 2D Fourier expansion
+    exp_order = 4        # order of 2D Fourier expansion
     
     # Bending energies
-    H_0     = 0.0   # Optimum mean curvature
-    kappa_H = 20.0   # Bending rigidity of mean curvature (kbT*l units)
-    kappa_K = -20.0   # Bending rigidity of Gaussian curvature (kbT*l^2 units)
+    H_0     = 0.0        # Optimum mean curvature
+    kappa_H = 20.0       # Bending rigidity of mean curvature (kbT*l units)
+    kappa_K = -20.0      # Bending rigidity of Gaussian curvature (kbT*l^2 units)
     
     # Size of Monte Carlo moves
-    delta = 0.01    # Standard deviation of perturbation applied to Fourier coefficients
+    delta = 0.01         # Standard deviation of perturbation applied to Fourier coefficients
+    
+    # Maximum change in projected area
+    original_excess_area = 0     # placeholder for later calculation
+    dA_threshold         = 0.05  # Fraction change allowed from starting membrane
     
     # X, Y grid for calculations
-    npts = 5        # Number of points per l unit length -> npts^2 per l^2 unit area
+    npts = 5             # Number of points per l unit length -> npts^2 per l^2 unit area
     x = np.linspace(0, l_x, l_x * npts)
     y = np.linspace(0, l_y, l_y * npts)
     X, Y = np.meshgrid(x, y)
 
 
-def init_model_membrane():
+def init_model_membrane( membrane = None ):
     '''
     Make class that stores Fourier cofficients describing surface (for 3rd order 2D expansion)
 
     INPUTS
-    None
+    membrane : dict or None, contains exp_order square matrices for initial Fourier coefficients,
+               Default - None - initial membrane is flat
 
     OUTPUT
-    membrane : dictionary, contains Fourier coefficients for flat surface and the associated bending energy
+    membrane : dict, contains Fourier coefficients for flat surface and the associated bending energy
     ''' 
-    membrane = {
-    'alpha' : np.zeros((params.exp_order, params.exp_order)),
-    'beta'  : np.zeros((params.exp_order, params.exp_order)),
-    'gamma' : np.zeros((params.exp_order, params.exp_order)),
-    'zeta'  : np.zeros((params.exp_order, params.exp_order))}
+    if not membrane:
+        membrane = {'alpha' : np.zeros((params.exp_order, params.exp_order)),
+                    'beta'  : np.zeros((params.exp_order, params.exp_order)),
+                    'gamma' : np.zeros((params.exp_order, params.exp_order)),
+                    'zeta'  : np.zeros((params.exp_order, params.exp_order))}
 
     # Calculate first membrane energy...
     # Calculate partial derivatives of height
@@ -78,6 +83,16 @@ def init_model_membrane():
 
     # Add energy to dictionary attributes
     membrane['energy'] = bending_energy
+
+    # Calculate total surface area
+    total_area  = np.sum(dA) / params.npts**2
+    # Excess area is total surface area minus projected (2D) area
+    excess_area = total_area - params.l_x*params.l_y
+    # Save to params for montecarlostep criterion
+    params.original_excess_area = excess_area
+
+    # Print attributes
+    print('Initial membrane bending energy:', bending_energy, 'kbT , excess area:', excess_area)
     
     return membrane
 
@@ -85,32 +100,27 @@ def init_model_membrane():
 
 # # # Functions for calculating bending free energy # # #
 
-def calc_height(alpha : np.array, beta : np.array, gamma : np.array, zeta : np.array, X : np.array, Y : np.array, l_x : float, l_y : float):
+def calc_height(membrane : dict, X : np.array, Y : np.array):
     '''
     Calculate height (z-direction) of model membrane using 2D Fourier expansion
     
     INPUT
-    alpha  : ndarray, Fourier series coefficient, params.exp_order square matrix
-    beta   : ndarray, Fourier series coefficient, params.exp_order square matrix
-    gamma  : ndarray, Fourier series coefficient, params.exp_order square matrix
-    zeta   : ndarray, Fourier series coefficient, params.exp_order square matrix
-    x      : ndarray, x-position 
-    y      : ndarray, y-postiion
-    l_x    : float, length of simulation box in X-axis
-    l_y    : float, length of simulation box in Y-axis
+    membrane : dict, contains Fourier coefficients (params.exp_order square matrices) for flat surface and the associated bending energy
+    x        : ndarray, 2D array of x_positions (meshgrid)
+    y        : ndarray, 2D array of y-positions (meshgrid)
     
     OUPUT
-    height : float, height at point (x,y)
+    height   : float, height at point (x,y)
     '''
     # Sum integers
     n = np.arange(params.exp_order)
     m = np.arange(params.exp_order)
     
     # Add two extra dimensions for broadcasting with 2D X, Y
-    cos_nx = np.cos(2*np.pi*n[:, None, None]*X/l_x) 
-    cos_my = np.cos(2*np.pi*m[:, None, None]*Y/l_y)  
-    sin_nx = np.sin(2*np.pi*n[:, None, None]*X/l_x)
-    sin_my = np.sin(2*np.pi*m[:, None, None]*Y/l_y)
+    cos_nx = np.cos(2*np.pi*n[:, None, None]*X/params.l_x) 
+    cos_my = np.cos(2*np.pi*m[:, None, None]*Y/params.l_y)  
+    sin_nx = np.sin(2*np.pi*n[:, None, None]*X/params.l_x)
+    sin_my = np.sin(2*np.pi*m[:, None, None]*Y/params.l_y)
     
     # Compute all four sums using einsum
     suma = np.einsum('nm,nij,mij->ij', membrane['alpha'], cos_nx, cos_my)
@@ -123,57 +133,52 @@ def calc_height(alpha : np.array, beta : np.array, gamma : np.array, zeta : np.a
     return height
     
 
-def calc_fourier_derivatives(alpha : np.array, beta : np.array, gamma : np.array, zeta : np.array, X : np.array, Y : np.array, l_x : float, l_y : float):
+def calc_fourier_derivatives(membrane : dict, X : np.array, Y : np.array):
     '''
     Compute a 2D Fourier expansion h(x,y) and its derivatives up to second order.
 
     INPUT
-    alpha  : ndarray, Fourier series coefficients, params.exp_order square matrix
-    beta   : ndarray, Fourier series coefficients, params.exp_order square matrix
-    gamma  : ndarray, Fourier series coefficients, params.exp_order square matrix
-    zeta   : ndarray, Fourier series coefficients, params.exp_order square matrix
-    x      : ndarray, 2D array of x_positions (meshgrid)
-    y      : ndarray, 2D array of y-positions (meshgrid)
-    l_x    : float, length of simulation box in X-axis
-    l_y    : float, length of simulation box in Y-axis
+    membrane : dict, contains Fourier coefficients (params.exp_order square matrices) for flat surface and the associated bending energy
+    x        : ndarray, 2D array of x_positions (meshgrid)
+    y        : ndarray, 2D array of y-positions (meshgrid)
 
     OUPUTS
-    h_x    : float, first order partial derivative by x
-    h_y    : float, first order partial derivative by y
-    h_xx   : float, second order partial derivative by x, x
-    h_xy   : float, second order partial derivative by x, y
-    h_yy   : float, second order partial derivative by y, y
+    h_x      : float, first order partial derivative by x
+    h_y      : float, first order partial derivative by y
+    h_xx     : float, second order partial derivative by x, x
+    h_xy     : float, second order partial derivative by x, y
+    h_yy     : float, second order partial derivative by y, y
     '''
     # Sum integers
     n = np.arange(params.exp_order)
     m = np.arange(params.exp_order)
+
+    # Precompute differentiated trig arguments
+    A = 2 * np.pi * n / params.l_x
+    B = 2 * np.pi * m / params.l_y
     
-    # Compute differentiated trig arguments
-    A = (2 * np.pi * n / l_x)[:, None, None]
-    B = (2 * np.pi * m / l_y)[:, None, None]
-    
-    # Compute trig functions once
-    cos_nx = np.cos(2*np.pi*n[:, None, None]*X/l_x)
-    sin_nx = np.sin(2*np.pi*n[:, None, None]*X/l_x)
-    cos_my = np.cos(2*np.pi*m[:, None, None]*Y/l_y)
-    sin_my = np.sin(2*np.pi*m[:, None, None]*Y/l_y)
+    # Precompute trig functions
+    cos_nx = np.cos(2*np.pi*n[:, None, None]*X/params.l_x)
+    sin_nx = np.sin(2*np.pi*n[:, None, None]*X/params.l_x)
+    cos_my = np.cos(2*np.pi*m[:, None, None]*Y/params.l_y)
+    sin_my = np.sin(2*np.pi*m[:, None, None]*Y/params.l_y)
     
     # First order derivatives using einsum
-    h_x = np.einsum('nm,nij,mij->ij', -membrane['alpha'] * (2*np.pi*n/l_x)[:, None], sin_nx, cos_my) + \
-          np.einsum('nm,nij,mij->ij', -membrane['beta']  * (2*np.pi*n/l_x)[:, None], sin_nx, sin_my) + \
-          np.einsum('nm,nij,mij->ij', +membrane['gamma'] * (2*np.pi*n/l_x)[:, None], cos_nx, cos_my) + \
-          np.einsum('nm,nij,mij->ij', +membrane['zeta']  * (2*np.pi*n/l_x)[:, None], cos_nx, sin_my)
+    h_x = np.einsum('nm,nij,mij->ij', -membrane['alpha'] * A[:, None], sin_nx, cos_my) + \
+          np.einsum('nm,nij,mij->ij', -membrane['beta']  * A[:, None], sin_nx, sin_my) + \
+          np.einsum('nm,nij,mij->ij', +membrane['gamma'] * A[:, None], cos_nx, cos_my) + \
+          np.einsum('nm,nij,mij->ij', +membrane['zeta']  * A[:, None], cos_nx, sin_my)
     
-    h_y = np.einsum('nm,nij,mij->ij', -membrane['alpha'] * (2*np.pi*m/l_y)[None, :], cos_nx, sin_my) + \
-          np.einsum('nm,nij,mij->ij', +membrane['beta']  * (2*np.pi*m/l_y)[None, :], cos_nx, cos_my) + \
-          np.einsum('nm,nij,mij->ij', -membrane['gamma'] * (2*np.pi*m/l_y)[None, :], sin_nx, sin_my) + \
-          np.einsum('nm,nij,mij->ij', +membrane['zeta']  * (2*np.pi*m/l_y)[None, :], sin_nx, cos_my)
+    h_y = np.einsum('nm,nij,mij->ij', -membrane['alpha'] * B[None, :], cos_nx, sin_my) + \
+          np.einsum('nm,nij,mij->ij', +membrane['beta']  * B[None, :], cos_nx, cos_my) + \
+          np.einsum('nm,nij,mij->ij', -membrane['gamma'] * B[None, :], sin_nx, sin_my) + \
+          np.einsum('nm,nij,mij->ij', +membrane['zeta']  * B[None, :], sin_nx, cos_my)
     
     # Second order derivatives...
-    # Compute differentiated trig arguments
-    A_sq = (2*np.pi*n/l_x)**2
-    B_sq = (2*np.pi*m/l_y)**2
-    AB = (2*np.pi*n/l_x)[:, None] * (2*np.pi*m/l_y)[None, :]
+    # Precompute differentiated trig arguments
+    A_sq = A**2
+    B_sq = B**2
+    AB = A[:, None] * B[None, :]
     
     h_xx = np.einsum('nm,nij,mij->ij', -membrane['alpha'] * A_sq[:, None], cos_nx, cos_my) + \
            np.einsum('nm,nij,mij->ij', -membrane['beta']  * A_sq[:, None], cos_nx, sin_my) + \
@@ -233,7 +238,7 @@ def calc_area_element(h_x : float, h_y : float):
     dA  : float, area element of "monge patch"
     '''
     dA = np.sqrt(1 + h_x**2 + h_y**2)
-    #dA = 1 + np.sum(dA_parts)
+    #dA = 1 + np.sum( np.sqrt(1 + h_x**2 + h_y**2) )
 
     return dA
 
@@ -299,21 +304,24 @@ def calc_Helfrich_energy(H : float, K_G : float, dA = 1):
     Note: using bending potential energy, NOT lipid bilayer bending FREE energy
     Using change in 2D area from bending, dA, to rescale the 2D area at every point
     
-    *** Energy be for whole surface -> acceptance ratio dependant on box size (esp. for high frequencies)
+    *** Energy be for whole surface -> acceptance ratio dependantiters on box size (esp. for high frequencies)
     
     INPUT
     H          : float, mean curvature
     K_G        : float, Gaussian curvature
-    dA         : float, change in 2D area from membrane bending
+    dA         : float, total surface area from membrane bending at each point
     
     OUTPUT
     tot_energy : float, Helfrich bending energy over surface
-    '''    
-    energy_per_l = 2*params.kappa_H * ( H - params.H_0 )**2 + abs(params.kappa_K * K_G) # abs to avoid negative bending energy
+    '''
+    # Calculate Helfrich bending energy for each point in surface
+    energy_per_pnt = 2*params.kappa_H * ( H - params.H_0 )**2 + abs(params.kappa_K * K_G) # abs to avoid negative bending energy
 
-    subgrid_area = 1 / (dA * params.npts**2) # for integration over total (2D) area
-    
-    tot_energy   = np.sum(energy_per_l * subgrid_area)
+    # Calculate subgrid area per point, with dA correction from bending
+    subgrid_area   = 1 / (dA * params.npts**2)
+
+    # Riemann integral of energy over surface area, truncated by subgrid area
+    tot_energy     = np.sum(energy_per_pnt * subgrid_area)
     
     return tot_energy
 
@@ -321,15 +329,19 @@ def calc_Helfrich_energy(H : float, K_G : float, dA = 1):
 
 # # # Functions for Markov Chain Monte Carlo # # #
 
-def montecarlomove(prev_membrane : dict):
+def montecarlosubmove(prev_membrane : dict):
     '''
-    Make Markov Chain Monte Carlo (MCMC) move to Fourier coefficients describing surface
+    First step of Markov Chain Monte Carlo (MCMC) move to Fourier coefficients describing surface
+    Proposes new membrane with change to previous membrane and calculates excess area, but does NOT test for excess area criterion or calculate bending energy
     
     INPUT
-    prev_membrane : dict, contains curvature Fourier coefficients from previous step
+    prev_membrane : dict, contains curvature Fourier coefficients and energy from previous step
     
     OUTPUT
-    move_membrane : dict, new membrane with perturbed curvature Fourier coefficients AND associated energy
+    move_membrane      : dict, new membrane with perturbed curvature Fourier coefficients WITHOUT associated energy and NOT vetted for dA criterion
+    S                  : ndarray, shape operator for all grid points X, Y
+    dA                 : ndarray, total surface area from membrane bending for all grid points X, Y
+    excess_area_change : float, fraction change in excess area from initial membrane
     '''
     # Fourier coefficient perturbations
     delta_alpha = np.random.normal(loc=0, scale=params.delta, size=(params.exp_order,params.exp_order))
@@ -350,9 +362,41 @@ def montecarlomove(prev_membrane : dict):
     # Calculate shape operator
     S = calc_shape_operator(h_x, h_y, h_xx, h_xy, h_yy)
 
-    # Calculate change in area from membrane bending
+    # Calculate change in area from membrane bending (for each subgrid point)
     dA = calc_area_element(h_x, h_y)
+
+    # Calculate excess area
+    excess_area = np.sum(dA) / params.npts**2 - params.l_x*params.l_y
+    # Calculate fraction change from original membrane for excess area criterion
+    excess_area_change = abs( (excess_area-params.original_excess_area) / params.original_excess_area ) if params.original_excess_area!=0 else 0
+    # Note: if original excess area is 0, set excess_area_change to 0 -> no excess area criterion
     
+    return move_membrane, S, dA, excess_area_change
+
+
+def montecarlomove(prev_membrane : dict):
+    '''
+    Entire of Markov Chain Monte Carlo (MCMC) move to Fourier coefficients describing surface
+    Additional excess area criterion: need to make sure move does not change projected area beyond a threshold 
+    -- thereby maintaining an initial buckle shape
+    
+    INPUT
+    prev_membrane : dict, contains curvature Fourier coefficients and energy from previous step
+    
+    OUTPUT
+    move_membrane : dict, new (& vetted) membrane with perturbed curvature Fourier coefficients AND associated energy
+    '''
+    # Propose Markov Chain Monte Carlo 
+    move_membrane, S, dA, excess_area_change = montecarlosubmove(prev_membrane)
+
+    # Ensure Monte Carlo Move does not deviate too far from original excess area
+    while excess_area_change > params.dA_threshold:
+        
+        #print('Exceeded dA threshold with fraction excess area change', excess_area_change, 'from original', params.original_excess_area)
+        
+        # Propose new Markov Chain Monte Carlo 
+        move_membrane, S, dA, excess_area_change = montecarlosubmove(prev_membrane)
+        
     # Calculate mean and Gaussian curvatures
     H   = calc_H(S)
     K_G = calc_K_G(S)
@@ -400,7 +444,7 @@ def montecarlostep(membrane_lst : list):
     # Extract last state data
     prev_membrane = membrane_lst[-1]
     
-    # Make Markov chain Monte Carlo move
+    # Make Markov chain Monte Carlo move, subject to excess area criterion
     move_membrane = montecarlomove(prev_membrane)
 
     # Extract bending energies from dictionaries
