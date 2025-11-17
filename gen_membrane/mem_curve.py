@@ -13,6 +13,7 @@ import copy
 # For visualisation
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+from mpl_toolkits.mplot3d import Axes3D
 
 
 
@@ -463,77 +464,135 @@ def montecarlostep(membrane_lst : list):
 
 # # # Code for visualisation / data analysis # # #
 
-def visualise(membrane_lst : list, nframes : int, save_dir=''):
-    '''
-    Visualise membrane curvature ensemble using heatmap plots
-    Note: un/comment code for use between matplotlib versions < & > 3.8 
-    
-    INPUT
-    membrane_lst : list of dict, contains curvature Fourier coefficients and associated energy
-    nframes      : int, frequency/ interval size of frames
-    save_dir     : str, name of directory to save animation, from view of working directory
-    
-    OUPUT
-    anim         : matplotlib.animation.FuncAnimation, animation of heatmap plots of membrane height
-    '''
-    # X,Y grid
-    npts = 4 
-    x = np.linspace(0, params.l_x, params.l_x*npts)
-    y = np.linspace(0, params.l_y, params.l_y*npts)
-    X, Y = np.meshgrid(x, y)
-    
-    # Calculate z-direction (heights)
-    Z_dump = [calc_height(membrane, X, Y) for membrane in membrane_lst[::nframes]]
-    
-    # Extract associated bending energies
-    energy_lst = [membrane['energy'] for membrane in membrane_lst[::nframes]]
+class visualise:
 
-    # Find that with maximum range for colourbar
-    #ranges = [np.max(arr) - np.min(arr) for arr in Z_dump]
-    #max_range_idx = np.argmax(ranges)
-    #maxval = np.max(Z_dump[max_range_idx]) if np.max(Z_dump[max_range_idx])>abs(np.min(Z_dump[max_range_idx])) else abs(np.min(Z_dump[max_range_idx]))
-    Z_min, Z_max = np.min(Z_dump), np.max(Z_dump)
-    maxval = Z_max if Z_max>abs(Z_min) else abs(Z_min)
-    Z_for_colourbar = Z_dump[0] + 0.0 # trick to make copy
-    Z_for_colourbar[0], Z_for_colourbar[1] = Z_min, Z_max # edit values so they show up on colourbar
-    
-    # Animation plot
-    fig, ax = plt.subplots(figsize=[8, 6])
-    
-    # Initial contour and colorbar
-    #contour = ax.contourf(X, Y, Z_dump[max_range_idx], levels=50, cmap='viridis', vmin=-maxval, vmax=maxval)
-    contour = ax.contourf(X, Y, Z_for_colourbar, levels=50, cmap='viridis', vmin=-maxval, vmax=maxval)
-    cbar = fig.colorbar(contour, ax=ax)
+    def __init__(self, membrane_lst : list, nframes : int, save_dir=''):
+        '''
+        Make calculations prior to animating plots
 
-    # Labels
-    cbar.set_label("Height")
-    title = ax.set_title("Frame 0")
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-
-    def update(frame):
-        nonlocal contour 
+        INPUTS
+        membrane_lst : list of dict, contains curvature Fourier coefficients and associated energy
+        nframes      : int, frequency/ interval size of frames
+        save_dir     : str, name of directory to save animation, from view of working directory
+        '''
+        self.nframes  = nframes
+        self.save_dir = save_dir
         
-        # Remove previous contour
-        #for coll in contour.collections: -- for matplotlib <3.8
-        #    coll.remove() 
-        if contour is not None:
-            contour.remove()  # -- for matplotlib >= 3.8
-    
-        # Draw new contour
-        contour = ax.contourf(
-            X, Y, Z_dump[frame],
-            levels=50, cmap='viridis',
-            vmin=-abs(maxval), vmax=+abs(maxval))
-    
-        # Update title
-        title.set_text(f"Step: {frame * nframes} , Energy: {round(energy_lst[frame], 1)}")
-
-        #return contour.collections + [title] # -- for matplotlib <3.8
-        return [contour, title] 
+        # X,Y grid
+        npts = 4 
+        x = np.linspace(0, params.l_x, params.l_x*npts)
+        y = np.linspace(0, params.l_y, params.l_y*npts)
+        self.X, self.Y = np.meshgrid(x, y)
         
-    anim = animation.FuncAnimation(fig, update, frames=len(Z_dump), interval=100, blit=False)
-    anim.save(f'./{save_dir}/contour_animation.gif', writer=animation.PillowWriter(fps=10))
-    plt.show()
+        # Calculate z-direction (heights)
+        self.Z_dump = [calc_height(membrane, self.X, self.Y) for membrane in membrane_lst[::nframes]]
+        
+        # Extract associated bending energies
+        self.energy_lst = [membrane['energy'] for membrane in membrane_lst[::nframes]]
+        
+        # Find that with maximum range for colourbar
+        Z_min, Z_max = np.min(self.Z_dump), np.max(self.Z_dump)
+        self.maxval = Z_max if Z_max>abs(Z_min) else abs(Z_min)
+        self.Z_for_colourbar = self.Z_dump[0] + 0.0 # trick to make copy
+        self.Z_for_colourbar[0], self.Z_for_colourbar[1] = Z_min, Z_max # edit values so they show up on colourbar
+
+
+    def vis_contour(self):
+        '''
+        Visualise membrane curvature ensemble using heatmap plots
+        Note: un/comment code for use between matplotlib versions < & > 3.8 
+        
+        OUPUT
+        anim         : matplotlib.animation.FuncAnimation, animation of heatmap plots of membrane height
+        '''
+        # Animation plot
+        fig, ax = plt.subplots(figsize=[8, 6])
+        
+        # Initial contour and colorbar
+        contour = ax.contourf(self.X, self.Y, self.Z_for_colourbar, levels=50, cmap='viridis', vmin=-self.maxval, vmax=self.maxval)
+        cbar = fig.colorbar(contour, ax=ax)
     
-    return anim
+        # Labels
+        cbar.set_label("Height")
+        title = ax.set_title("Frame 0")
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+    
+        def update(frame):
+            nonlocal contour 
+            
+            # Remove previous contour
+            #for coll in contour.collections: -- for matplotlib <3.8
+            #    coll.remove() 
+            if contour is not None:
+                contour.remove()  # -- for matplotlib >= 3.8
+        
+            # Draw new contour
+            contour = ax.contourf(
+                self.X, self.Y, self.Z_dump[frame],
+                levels=50, cmap='viridis',
+                vmin=-abs(self.maxval), vmax=+abs(self.maxval))
+        
+            # Update title
+            title.set_text(f"Step: {frame * self.nframes} , Energy: {round(self.energy_lst[frame], 1)}")
+    
+            #return contour.collections + [title] # -- for matplotlib <3.8
+            return [contour, title] 
+            
+        anim = animation.FuncAnimation(fig, update, frames=len(self.Z_dump), interval=100, blit=False, repeat=True)
+        anim.save(f'./{self.save_dir}/contour_animation.gif', writer=animation.PillowWriter(fps=10))
+        anim.save(f'./{self.save_dir}/contour_animation.mp4', writer='ffmpeg', fps=10)
+        plt.show()
+        
+        return anim
+
+
+    def vis_3d(self):
+        '''
+        Visualise membrane curvature ensemble using animation of 3D surface plots
+        
+        OUPUT
+        anim         : matplotlib.animation.FuncAnimation, animation of heatmap plots of membrane height
+        '''
+        # Create figure and 3D axis
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        
+        # Initialize the surface plot
+        surf = ax.plot_surface(self.X, self.Y, self.Z_for_colourbar, cmap='viridis', edgecolor='none', alpha=0.7, vmin=-self.maxval, vmax=self.maxval)
+        
+        # Set labels and title
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Height')
+        ax.set_title('3D Surface Animation')
+        
+        # Set fixed z-axis limits for consistent viewing
+        ax.set_zlim(-self.maxval, self.maxval)
+        
+        # Add colorbar
+        fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5)
+        
+        # Animation update function
+        def update(frame):
+            ax.clear()
+            
+            # Plot the surface
+            surf = ax.plot_surface(self.X, self.Y, self.Z_dump[frame], cmap='viridis', edgecolor='none', alpha=0.9)
+            
+            # Reset labels and limits
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Height')
+            ax.set_title(f"Step: {frame * self.nframes} , Energy: {round(self.energy_lst[frame], 1)}")
+            ax.set_zlim(-self.maxval, self.maxval)
+            
+            return surf,
+        
+        # Create animation
+        anim = animation.FuncAnimation(fig, update, frames=len(self.Z_dump), interval=100, blit=False, repeat=True)
+        
+        plt.tight_layout()
+        anim.save(f'./{self.save_dir}/surface_animation.gif', writer='pillow', fps=10)
+        anim.save(f'./{self.save_dir}/surface_animation.mp4', writer='ffmpeg', fps=10)
+        plt.show()
