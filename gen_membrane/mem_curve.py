@@ -2,9 +2,10 @@
 """
 Created on Fri Oct 17 12:35:32 2025
 
-@author: ralph
+@author: ralph-holden
 
-Script containing functions for simulation of stable membrane curvatures -- to be used for initialising membrane MD simulation
+Script containing functions for Markov chain Monte Carlo simulation of membrane geometry
+Uses Helfrich bending energy for membrane surface, parametrised by Fourier series coefficients and over descrete grid, to evaluate Monte Carlo moves
 """
 # # # Imports # # #
 # For simulatution
@@ -23,83 +24,37 @@ class params:
     '''
     Set parameters used in simulation
     '''
-    # Size of thermal fluctuations, base unit of simulation
+    # Size of thermal fluctuations, base unit of simulation energy
     kbT = 1  
     
     # Box size
-    l_x = 50             # box size, x-direction
-    l_y = 50             # box size, y-direction
+    l_x = 50                     # box size, x-direction
+    l_y = 50                     # box size, y-direction
     
     # Fourier expansion
-    exp_order = 4        # order of 2D Fourier expansion
+    exp_order = 4                # order of 2D Fourier expansion
     
     # Bending energies
-    H_0     = 0.0        # Optimum mean curvature
-    kappa_H = 20.0       # Bending rigidity of mean curvature (kbT*l units)
-    kappa_K = -20.0      # Bending rigidity of Gaussian curvature (kbT*l^2 units)
+    H_0     = 0.0                # Spontaneous mean curvature
+    kappa_H = 20.0               # Bending rigidity of mean curvature (kbT*l units)
+    kappa_K = -20.0              # Bending rigidity of Gaussian curvature (kbT*l^2 units)
     
     # Size of Monte Carlo moves
-    delta = 0.01         # Standard deviation of perturbation applied to Fourier coefficients
+    delta = 0.05                 # Standard deviation of perturbation applied to Fourier coefficients
     
     # Maximum change in projected area
     original_excess_area = 0     # placeholder for later calculation
     dA_threshold         = 0.05  # Fraction change allowed from starting membrane
     
     # X, Y grid for calculations
-    npts = 5             # Number of points per l unit length -> npts^2 per l^2 unit area
+    npts = 5                     # Number of points per l unit length -> npts^2 per l^2 unit area
     x = np.linspace(0, l_x, l_x * npts)
     y = np.linspace(0, l_y, l_y * npts)
     X, Y = np.meshgrid(x, y)
 
 
-def init_model_membrane( membrane = None ):
-    '''
-    Make class that stores Fourier cofficients describing surface (for 3rd order 2D expansion)
 
-    INPUTS
-    membrane : dict or None, contains exp_order square matrices for initial Fourier coefficients,
-               Default - None - initial membrane is flat
-
-    OUTPUT
-    membrane : dict, contains Fourier coefficients for flat surface and the associated bending energy
-    ''' 
-    if not membrane:
-        membrane = {'alpha' : np.zeros((params.exp_order, params.exp_order)),
-                    'beta'  : np.zeros((params.exp_order, params.exp_order)),
-                    'gamma' : np.zeros((params.exp_order, params.exp_order)),
-                    'zeta'  : np.zeros((params.exp_order, params.exp_order))}
-
-    # Calculate first membrane energy...
-    # Calculate partial derivatives of height
-    h_x, h_y, h_xx, h_xy, h_yy = calc_fourier_derivatives(membrane, params.X, params.Y)
-    # Calculate shape operator
-    S = calc_shape_operator(h_x, h_y, h_xx, h_xy, h_yy)
-    # Calculate change in area from membrane bending
-    dA = calc_area_element(h_x, h_y)
-    # Calculate mean and Gaussian curvatures
-    H   = calc_H(S)
-    K_G = calc_K_G(S)
-    # Calculate bending energy
-    bending_energy = calc_Helfrich_energy(H, K_G, dA)
-
-    # Add energy to dictionary attributes
-    membrane['energy'] = bending_energy
-
-    # Calculate total surface area
-    total_area  = np.sum(dA) / params.npts**2
-    # Excess area is total surface area minus projected (2D) area
-    excess_area = total_area - params.l_x*params.l_y
-    # Save to params for montecarlostep criterion
-    params.original_excess_area = excess_area
-
-    # Print attributes
-    print('Initial membrane bending energy:', bending_energy, 'kbT , excess area:', excess_area)
-    
-    return membrane
-
-
-
-# # # Functions for calculating bending free energy # # #
+# # # Functions for calculating Helfrich bending energy and other parameters # # #
 
 def calc_height(membrane : dict, X : np.array, Y : np.array):
     '''
@@ -228,7 +183,7 @@ def calc_shape_operator(h_x : float, h_y : float, h_xx : float, h_xy : float, h_
 
 def calc_area_element(h_x : float, h_y : float):
     '''
-    Calculate the area element (dA) of a "monge patch" at x, y
+    Calculate the area element, dA -- increase in surface area of bent surface at gridpoint x,y
     Note: x, y positions specified when calculating h_x, h_y in calc_shape_operator 
 
     INPUTS
@@ -236,20 +191,19 @@ def calc_area_element(h_x : float, h_y : float):
     h_y : float, partial derivative of height by y at point x,y
 
     OUPUTS
-    dA  : float, area element of "monge patch"
+    dA  : float, area element
     '''
     dA = np.sqrt(1 + h_x**2 + h_y**2)
-    #dA = 1 + np.sum( np.sqrt(1 + h_x**2 + h_y**2) )
 
     return dA
 
 
 def calc_H(S_xy: np.ndarray):
     '''
-    Calculate mean curvature, H at point (x,y)
+    Calculate mean curvature, H at gridpoint(s) x,y
     
     INPUT
-    S_xy : 2D array, shape operator at point x,y
+    S_xy : 2D array, shape operator at gridpoint(s) x,y
     
     OUPUT
     H    : float, mean curvature
@@ -261,16 +215,16 @@ def calc_H(S_xy: np.ndarray):
 
 def calc_K_G(S_xy: np.ndarray):
     '''
-    Calculate Gaussian curvature, K_G at point (x,y)
+    Calculate Gaussian curvature, K_G at gridpoint(s) x,y
     When S_xy is over all of grid X,Y -- must make determinant piecewise
     
     INPUT
-    S_xy : 2D array, shape operator at point x,y
+    S_xy : 2D array, shape operator at gridpoint(s) x,y
     
     OUPUT
-    K_G  : float, Gaussian curvature
+    K_G  : float, Gaussian curvature at gridpoint(s) x,y
     '''
-    #K_G = np.linalg.det(S_xy)
+    #K_G = np.linalg.det(S_xy) # does not work for all gridpoints embedded in S_xy
     a = S_xy[0, 0] 
     b = S_xy[0, 1]
     c = S_xy[1, 0]
@@ -283,15 +237,15 @@ def calc_K_G(S_xy: np.ndarray):
 
 def calc_principle_curvatures(H : float, K_G : float):
     '''
-    Calculate principle curvatures k_1, k_2 at point (x,y)
+    Calculate principle curvatures k_1, k_2 at gridpoint(s) x,y
     
     INPUT
-    H   : float, mean curvature
-    K_G : float, Gaussian curvature
+    H   : float, mean curvature at gridpoint(s) x,y
+    K_G : float, Gaussian curvature at gridpoint(s) x,y
     
     OUPUT
-    k_1 : float, principle curvature
-    k_2 : float, principle curvature
+    k_1 : float, principle curvature at gridpoint(s) x,y
+    k_2 : float, principle curvature at gridpoint(s) x,y
     '''
     k_1 = H + np.sqrt( H**2 - K_G )
     k_2 = H - np.sqrt( H**2 - K_G )
@@ -299,18 +253,16 @@ def calc_principle_curvatures(H : float, K_G : float):
     return k_1, k_2
 
 
-def calc_Helfrich_energy(H : float, K_G : float, dA = 1):
+def calc_Helfrich_energy(H : np.ndarray, K_G : np.ndarray, dA = 1):
     '''
-    Calculate Helfrich bending energy of membrane
-    Note: using bending potential energy, NOT lipid bilayer bending FREE energy
+    Calculate Helfrich bending energy of membrane, for energy change in Monte Carlo step
+    Membrane surface parametrised by Fourier coefficients, on descrete grid X,Y
     Using change in 2D area from bending, dA, to rescale the 2D area at every point
     
-    *** Energy be for whole surface -> acceptance ratio dependantiters on box size (esp. for high frequencies)
-    
     INPUT
-    H          : float, mean curvature
-    K_G        : float, Gaussian curvature
-    dA         : float, total surface area from membrane bending at each point
+    H          : ndarray, mean curvature at gridpoint(s) x,y
+    K_G        : ndarray, Gaussian curvature at gridpoint(s) x,y
+    dA         : ndarray, area element at gridpoint(s) x,y -- increase in surface area from membrane bending 
     
     OUTPUT
     tot_energy : float, Helfrich bending energy over surface
@@ -370,7 +322,7 @@ def montecarlosubmove(prev_membrane : dict):
     excess_area = np.sum(dA) / params.npts**2 - params.l_x*params.l_y
     # Calculate fraction change from original membrane for excess area criterion
     excess_area_change = abs( (excess_area-params.original_excess_area) / params.original_excess_area ) if params.original_excess_area!=0 else 0
-    # Note: if original excess area is 0, set excess_area_change to 0 -> no excess area criterion
+    # Note: if original excess area is 0, excess_area_change set to 0 -> no excess area criterion
     
     return move_membrane, S, dA, excess_area_change
 
@@ -412,7 +364,7 @@ def montecarlomove(prev_membrane : dict):
 
 def montecarloeval(move_energy : float, prev_energy : float):
     '''
-    Calculate MCMC move energy, evaluate move acceptance
+    Evaluate move using Monte Carlo criterion
     
     INPUT
     move_energy : float, energy associated with proposed membrane curvature
@@ -421,11 +373,13 @@ def montecarloeval(move_energy : float, prev_energy : float):
     OUPUT
     accept_move : bool, Monte Carlo step outcome
     '''
+    # Calculate Boltzmann factor of Helfrich bending energy change
     boltzmann_factor = np.exp( -(move_energy - prev_energy) )
     
-    # choose random number
+    # Draw random number from uniform distribution between [0,1)
     rand_number = np.random.random()
-    
+
+    # Monte Carlo acceptance criterion
     accept_move = rand_number < boltzmann_factor
     
     return accept_move
@@ -433,7 +387,7 @@ def montecarloeval(move_energy : float, prev_energy : float):
 
 def montecarlostep(membrane_lst : list):
     '''
-    Run MCMC step: propose move, evaluate, update Markov chain
+    Run MCMC step; propose move, evaluate, update Markov chain
     
     INPUT
     membrane_lst : list of dict, contains curvature Fourier coefficients and associated energy from previous steps
@@ -461,6 +415,55 @@ def montecarlostep(membrane_lst : list):
     return membrane_lst, accept_move
 
 
+
+# # # Function to calculate starting membrane data # # #
+
+def init_model_membrane( membrane = None ):
+    '''
+    Make class that stores Fourier cofficients describing surface (for 3rd order 2D expansion)
+
+    INPUTS
+    membrane : dict or None, contains exp_order square matrices for initial Fourier coefficients,
+               Default - None - initial membrane is flat
+
+    OUTPUT
+    membrane : dict, contains Fourier coefficients for flat surface and the associated bending energy
+    ''' 
+    if not membrane:
+        membrane = {'alpha' : np.zeros((params.exp_order, params.exp_order)),
+                    'beta'  : np.zeros((params.exp_order, params.exp_order)),
+                    'gamma' : np.zeros((params.exp_order, params.exp_order)),
+                    'zeta'  : np.zeros((params.exp_order, params.exp_order))}
+
+    # Calculate first membrane energy...
+    # Calculate partial derivatives of height
+    h_x, h_y, h_xx, h_xy, h_yy = calc_fourier_derivatives(membrane, params.X, params.Y)
+    # Calculate shape operator
+    S = calc_shape_operator(h_x, h_y, h_xx, h_xy, h_yy)
+    # Calculate change in area from membrane bending
+    dA = calc_area_element(h_x, h_y)
+    # Calculate mean and Gaussian curvatures
+    H   = calc_H(S)
+    K_G = calc_K_G(S)
+    # Calculate bending energy
+    bending_energy = calc_Helfrich_energy(H, K_G, dA)
+
+    # Add energy to dictionary attributes
+    membrane['energy'] = bending_energy
+
+    # Calculate total surface area
+    total_area  = np.sum(dA) / params.npts**2
+    # Excess area is total surface area minus projected (2D) area
+    excess_area = total_area - params.l_x*params.l_y
+    # Save to params for montecarlostep criterion
+    params.original_excess_area = excess_area
+
+    # Print attributes
+    print('Initial membrane bending energy:', bending_energy, 'kbT , excess area:', excess_area)
+    
+    return membrane
+
+    
 
 # # # Code for visualisation / data analysis # # #
 
