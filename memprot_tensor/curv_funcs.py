@@ -7,8 +7,12 @@ import matplotlib.animation as animation
 from scipy.interpolate import griddata
 
 
-# Get manual input
-exp_order = int(input('Order of Fourier series: '))
+# # # Parameters # # #
+# Dimensions of square matrices for Fourier coefficients
+exp_order = int(input('Order of Fourier series: ')) # manual input
+
+# Space grid size used in minimisation
+#delta = 10 # -- defined in tbe_g() -- wrapper for objective function
 
 
 # # # Define Functions # # #
@@ -44,9 +48,9 @@ def calc_height(alpha : np.array, beta : np.array, gamma : np.array, zeta : np.a
     
     # Compute all four sums using einsum
     suma = np.einsum('nm,nij,mij->ij', alpha, cos_nx, cos_my)
-    sumb = np.einsum('nm,nij,mij->ij', beta, cos_nx, sin_my)
+    sumb = np.einsum('nm,nij,mij->ij', beta,  cos_nx, sin_my)
     sumg = np.einsum('nm,nij,mij->ij', gamma, sin_nx, cos_my)
-    sumz = np.einsum('nm,nij,mij->ij', zeta, sin_nx, sin_my)
+    sumz = np.einsum('nm,nij,mij->ij', zeta,  sin_nx, sin_my)
     
     height = suma + sumb + sumg + sumz
 
@@ -58,21 +62,21 @@ def calc_fourier_derivatives(alpha : np.array, beta : np.array, gamma : np.array
     Compute a 2D Fourier expansion h(x,y) and its derivatives up to second order.
 
     INPUT
-    alpha  : ndarray, Fourier series coefficients, exp_order square matrix
-    beta   : ndarray, Fourier series coefficients, exp_order square matrix
-    gamma  : ndarray, Fourier series coefficients, exp_order square matrix
-    zeta   : ndarray, Fourier series coefficients, exp_order square matrix
-    x      : ndarray, 2D array of x_positions (meshgrid)
-    y      : ndarray, 2D array of y-positions (meshgrid)
-    l_x    : float, length of simulation box in X-axis
-    l_y    : float, length of simulation box in Y-axis
+    alpha : ndarray, Fourier series coefficients, exp_order square matrix
+    beta  : ndarray, Fourier series coefficients, exp_order square matrix
+    gamma : ndarray, Fourier series coefficients, exp_order square matrix
+    zeta  : ndarray, Fourier series coefficients, exp_order square matrix
+    x     : ndarray, 2D array of x_positions (meshgrid)
+    y     : ndarray, 2D array of y-positions (meshgrid)
+    l_x   : float, length of simulation box in X-axis
+    l_y   : float, length of simulation box in Y-axis
 
     OUPUTS
-    h_x    : ndarray, first order partial derivative by x
-    h_y    : ndarray, first order partial derivative by y
-    h_xx   : ndarray, second order partial derivative by x, x
-    h_xy   : ndarray, second order partial derivative by x, y
-    h_yy   : ndarray, second order partial derivative by y, y
+    h_x   : ndarray, first order partial derivative by x
+    h_y   : ndarray, first order partial derivative by y
+    h_xx  : ndarray, second order partial derivative by x, x
+    h_xy  : ndarray, second order partial derivative by x, y
+    h_yy  : ndarray, second order partial derivative by y, y
     '''
     # Sum integers
     n = np.arange(exp_order)
@@ -396,8 +400,7 @@ def reformat_Fourier_coeffs(Fcoeffs):
 
 def be_xy(alpha, beta, gamma, zeta, X, Y, l_x, l_y, p_com, pv, t):
     '''
-    Put all functions together for loss calculation in minimisation step
-    *** DEFINED IN NOTEBOOK FOR NOW ***
+    Put all functions together for objective function calculation in minimisation step
 
     INPUT
     alpha : ndarray, Fourier series coefficient, exp_order square matrix
@@ -413,9 +416,38 @@ def be_xy(alpha, beta, gamma, zeta, X, Y, l_x, l_y, p_com, pv, t):
     t     : ndarray, protein curvature tensor, to be optimised
 
     OUTPUT
-    be    : ndarray, some function of curvature field
+    be    : ndarray, function of curvature field (multiD), precurser to objective function output (1D)
     '''
-    pass # DEFINED IN NOTEBOOK FOR NOW
+    # Calculate Fourier coeff derivatives
+    h_x, h_y, h_xx, h_xy, h_yy = calc_fourier_derivatives(alpha, beta, gamma, zeta, X, Y, l_x, l_y)
+
+    # Calculate area element
+    dA = calc_area_element(h_x, h_y)
+
+    # Calc shape operator
+    S = calc_shape_operator(h_x, h_y, h_xx, h_xy, h_yy)
+
+    # Calculate curvature descriptors and principle curvatures
+    #H, K_G, k1, k2 = calc_curv_descriptors(S) # principle curvatures 
+    H, K_G, k1, k2, theta1, theta2 = calc_curv_descriptors_full(S) # principle curvatures *** does this give same results?
+
+    # Calculate mean curvature tensor
+    M = calc_mean_curv_tensor(k1, k2, theta1) # *** is there a difference between using either theta?
+    
+    # Calculate angle (phi) between flat plane (ux) and protein principle axis (pv)
+    ux  = np.array([1, 0])   
+    phi = calc_angle(ux, pv) 
+
+    # Calculate spontaneous curvature tensor
+    C0 = calc_spont_curv_tensor(t, phi) 
+    
+    # Calculate weight function
+    wf = calc_wf(X, Y, p_com, t) 
+
+    # Result
+    be = ((M - (C0*wf))**2).sum()*dA
+
+    return be
 
 
 # Functions for optimisation/ objective function
@@ -442,23 +474,10 @@ def calc_residual(Fcoeffs : np.ndarray, h_sim : np.ndarray, X : np.ndarray, Y : 
     return residual[0] # reshape from (1, a) to (a,)
 
 
-def tbe_g(t):
-    '''
-    Minimise parameter t for protein local curvature field
-    *** DEFINED IN NOTEBOOK FOR NOW ***
-
-    INPUT
-    t : ndarray, protein curvature tensor
-
-    OUTPUT
-    obj_out : float, loss - objective function output for curvature tensor t
-    '''
-    pass # DEFINED IN NOTEBOOK FOR NOW
-
 
 # Functions for visualisation
 
-def visualise(Fcoeffs_data, X, Y, l_x, l_y, u_buckle, foldername):
+def visualise(Fcoeffs_data, X, Y, Z_sim, l_x, l_y, foldername):
     # Number of frames
     nframes = 10
 
@@ -467,21 +486,6 @@ def visualise(Fcoeffs_data, X, Y, l_x, l_y, u_buckle, foldername):
     for i in range(len(Fcoeffs_data)):
         alpha, beta, gamma, zeta = reformat_Fourier_coeffs(Fcoeffs_data[i])
         Z_fit.append(calc_height(alpha, beta, gamma, zeta, X, Y, l_x, l_y))
-
-    # True height
-    Z_sim = []
-    for idx, ts in enumerate(u_buckle.trajectory[:]):
-        lipids = u_buckle.atoms.select_atoms('name PO4')
-        pos = lipids.positions
-        x, y, z = pos[:, 0], pos[:, 1], pos[:, 2]
-    
-        # Interpolate scattered z values onto the same grid as Z_fit
-        z_grid = griddata(
-            (x, y), z, (X, Y),
-            method='cubic',  # or 'linear' if cubic fails
-            fill_value=np.nan
-        )
-        Z_sim.append(z_grid)
 
     # Compute color scale ranges
     Z_min_fit, Z_max_fit = np.min(Z_fit), np.max(Z_fit)
