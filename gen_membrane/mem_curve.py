@@ -44,7 +44,7 @@ class params:
     
     # Maximum change in projected area
     original_excess_area = 0     # placeholder for later calculation
-    dA_threshold         = 0.05  # Fraction change allowed from starting membrane
+    dA_threshold         = 0.05  # Fraction change allowed from starting membrane EXCESS area (not total surface)
     
     # X, Y grid for calculations
     npts = 5                     # Number of points per l unit length -> npts^2 per l^2 unit area
@@ -255,7 +255,7 @@ def calc_principle_curvatures(H : float, K_G : float):
 
 def calc_Helfrich_energy(H : np.ndarray, K_G : np.ndarray, dA = 1):
     '''
-    Calculate Helfrich bending energy of membrane, for energy change in Monte Carlo step
+    Calculate Helfrich bending energy of membrane, proxy for potential energy change in Monte Carlo step
     Membrane surface parametrised by Fourier coefficients, on descrete grid X,Y
     Using change in 2D area from bending, dA, to rescale the 2D area at every point
     
@@ -467,6 +467,67 @@ def init_model_membrane( membrane = None ):
 
 # # # Code for visualisation / data analysis # # #
 
+def calc_height_mode(membrane : dict, mode : tuple):
+    '''
+    Calculate height (z-direction) of model membrane using 2D Fourier expansion
+    FOR ONE FOURIER MODE ONLY
+    
+    INPUT
+    membrane : dict, holds Fourier coefficients
+    mode     : tuple, Fourier mode
+    
+    OUPUT
+    mheight  : float, height OF MODE at point (x,y)
+    '''
+    n, m = mode
+    
+    mheight  = membrane['alpha'][n,m] * np.cos(2*np.pi*n*params.X/params.l_x)*np.cos(2*np.pi*m*params.X/params.l_y)
+    mheight += membrane['beta'][n,m]  * np.cos(2*np.pi*n*params.X/params.l_x)*np.sin(2*np.pi*m*params.X/params.l_y) 
+    mheight += membrane['gamma'][n,m] * np.sin(2*np.pi*n*params.X/params.l_x)*np.cos(2*np.pi*m*params.X/params.l_y)
+    mheight += membrane['zeta'][n,m]  * np.sin(2*np.pi*n*params.X/params.l_x)*np.sin(2*np.pi*m*params.X/params.l_y)
+      
+    return mheight
+
+
+def contour_surface_plot(membrane, filename=''):
+    '''
+    Visualise static (one frame) surface using contour plot
+
+    INPUTS
+    membrane : dict, holds Fourier coefficients as nxn matrices
+    filename : str, directory and filename to save contour plot, if empty (default), not saved
+
+    OUTPUT
+    fig      : maplotlib.pyplot figure of contour plot
+    '''
+    # X,Y grid
+    npts = 100
+    x = np.linspace(0, params.l_x, npts)
+    y = np.linspace(0, params.l_y, npts)
+    X, Y = np.meshgrid(x, y)
+    
+    # Calculate z-direction (heights)
+    Z = calc_height(membrane, X, Y)
+    
+    # Animation plot
+    fig, ax = plt.subplots(figsize=[8, 6])
+    
+    # Initial contour and colorbar
+    maxval = np.max(Z) if np.max(Z)>abs(np.min(Z)) else abs(np.min(Z))
+    contour = ax.contourf(X, Y, Z, levels=50, cmap='viridis', vmin=-maxval, vmax=maxval)
+    cbar = fig.colorbar(contour, ax=ax)
+    
+    # Labels
+    cbar.set_label("Height")
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+
+    if len(filename)>0:
+        plt.savefig(filename+'.pdf')
+        
+    plt.show()
+
+
 class visualise:
 
     def __init__(self, membrane_lst : list, nframes : int, save_dir=''):
@@ -482,7 +543,7 @@ class visualise:
         self.save_dir = save_dir
         
         # X,Y grid
-        npts = 4 
+        npts = 2
         x = np.linspace(0, params.l_x, params.l_x*npts)
         y = np.linspace(0, params.l_y, params.l_y*npts)
         self.X, self.Y = np.meshgrid(x, y)
